@@ -1,4 +1,3 @@
-[README.md](https://github.com/user-attachments/files/35425317/README.md)
 # ShopDesk (NoksForge)
 
 A self-hosted, multi-tenant repair shop manager. Python standard library only (3.11+). One SQLite database file per shop.
@@ -11,7 +10,7 @@ Version 3 adds: a drag-and-drop Kanban board of tickets (status columns, priorit
 
 Version 6 adds: **self-service shop sign-up**, a **cash ledger** and **time tracking**. The ledger (top navigation, plus a Cash flow card on the dashboard) is a running record of money in and out with a running balance and a positive/negative cash-flow reading. Inventory purchases (new stock with a cost, or received stock when you tick "record as purchase") and paid invoices are written to it automatically, each with its date, amount, and SKU or invoice number. You can add other income and expenses by hand, filter by period, download a CSV, and correct mistakes with reversing entries (rows are never edited or deleted; voiding a paid invoice reverses its payment line). Time tracking adds Clock in / Clock out on every ticket with a live clock in the header, manual time entries, per-ticket totals, a Time page (timesheets for managers, "My time" for technicians), and a "Clocked in now" list on the manager dashboard. Closing a ticket stops any running timers on it. Ledger and time permissions are granted to owners and managers (technicians can track their own time).
 
-**Software updates (v0.0.7):** the platform administrator (not shop owners) can open `/admin.html`, check GitHub Releases for a newer version and click **Update now**; the server backs up, installs the release, restarts and rolls back automatically if the new version does not come up. How to publish a release and how existing installs get the updater: [RELEASING.md](RELEASING.md). The current version is in the `VERSION` file.
+**Software updates (v6.1):** the platform administrator (not shop owners) can open `/admin.html`, check GitHub Releases for a newer version and click **Update now**; the server backs up, installs the release, restarts and rolls back automatically if the new version does not come up. How to publish a release and how existing installs get the updater: [RELEASING.md](RELEASING.md). The current version is in the `VERSION` file.
 
 ## Layout (same as Plateful)
 
