@@ -7,7 +7,7 @@ PKG_DIR = pathlib.Path(__file__).resolve().parent
 ROOT_DIR = PKG_DIR.parent
 
 # GitHub "owner/repo" that publishes ShopDesk releases. CHANGE THE REPO NAME if yours differs.
-UPDATE_REPO = "NoksBer/ShopDesk-Live"
+UPDATE_REPO = "NoksBer/shopdesk"
 
 
 def _bool(value):
