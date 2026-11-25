@@ -1,0 +1,468 @@
+#!/usr/bin/python3
+"""ShopDesk updater. Installed at /usr/local/bin/shopdesk-update and run AS ROOT by shopdesk-update.service, which
+the shopdesk-update.path unit starts when the app drops /var/lib/shopdesk/update-request.
+
+Trust model
+  * The repository comes from /etc/shopdesk/update.conf (root-owned), never from the app, the browser or the request.
+  * The request file may only contain a version tag (v1.2.3). It is used ONLY as "the version the admin approved":
+    the updater asks GitHub itself and refuses to continue if the latest release is a different version.
+  * Only the two release assets shopdesk-<tag>.tar.gz and shopdesk-<tag>.tar.gz.sha256 are downloaded, over HTTPS,
+    from https://github.com/<repo>/releases/download/<tag>/. The tarball must match its SHA-256 before it is opened.
+  * The archive is unpacked by hand (regular files and directories only, no absolute or '..' paths, size-capped).
+  * Nothing from the release is executed by this script (the app is plain Python with no build step); every .py
+    file is only compiled in memory as a syntax check.
+
+Steps (status is written to /var/lib/shopdesk/update-status.json after each one):
+  check -> download -> verify -> prepare -> stop -> backup -> install -> start (migrations run at app start) -> health
+On any failure after the app was stopped, the code and databases are restored from the backup and the app restarted.
+"""
+import datetime
+import fcntl
+import hashlib
+import json
+import os
+import pathlib
+import re
+import shutil
+import sqlite3
+import subprocess
+import sys
+import tarfile
+import tempfile
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
+
+DATA = pathlib.Path("/var/lib/shopdesk")
+CODE = pathlib.Path("/opt/shopdesk")
+PREV = pathlib.Path("/opt/shopdesk.prev")
+STAGE = pathlib.Path("/opt/shopdesk.new")
+EXTRACT = pathlib.Path("/opt/shopdesk.extract")
+DOWNLOADS = pathlib.Path("/opt/shopdesk.download")
+CONF = pathlib.Path("/etc/shopdesk/update.conf")
+ENVFILE = pathlib.Path("/etc/shopdesk/shopdesk.env")
+SERVICE = "shopdesk"
+USER = "shopdesk"
+BACKUPS = DATA / "backups"
+REQUEST = DATA / "update-request"
+STATUS = DATA / "update-status.json"
+LOCK = DATA / "update.lock"
+KEEP_BACKUPS = 3
+MAX_DOWNLOAD = 60 * 1024 * 1024
+MAX_UNPACKED = 200 * 1024 * 1024
+HEALTH_SECONDS = 60
+
+TAG_RE = re.compile(r"^v\d{1,6}\.\d{1,6}\.\d{1,6}$")
+REPO_RE = re.compile(r"^[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}$")
+SHA_RE = re.compile(r"^[0-9a-fA-F]{64}$")
+
+
+class Fail(Exception):
+    pass
+
+
+def now_iso():
+    return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def log(msg):
+    print(msg, flush=True)
+
+
+def semver(text):
+    m = re.match(r"^v?(\d+)\.(\d+)\.(\d+)$", text.strip())
+    return tuple(int(x) for x in m.groups()) if m else None
+
+
+def read_version(root):
+    try:
+        return (root / "VERSION").read_text(encoding="utf-8").strip()
+    except OSError:
+        return "0.0.0"
+
+
+class Status:
+    def __init__(self):
+        self.d = {"state": "running", "step": "starting", "message": "Starting the update…", "startedAt": now_iso(),
+                  "finishedAt": None, "error": None, "fromVersion": read_version(CODE), "targetVersion": None,
+                  "rolledBack": False, "backup": None}
+
+    def set(self, step, message, **extra):
+        self.d.update(step=step, message=message, **extra)
+        log("[%s] %s" % (step, message))
+        self.write()
+
+    def finish(self, state, message, error=None, **extra):
+        self.d.update(state=state, message=message, error=error, finishedAt=now_iso(), **extra)
+        log("[%s] %s%s" % (state, message, (" - " + error) if error else ""))
+        self.write()
+
+    def write(self):
+        tmp = str(STATUS) + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(self.d, f)
+        os.chmod(tmp, 0o644)          # the app (user shopdesk) reads it
+        os.replace(tmp, STATUS)
+
+
+# ------------------------------------------------------------------ helpers
+def run(*cmd, timeout=90):
+    """Run a fixed command (argument list, never a shell)."""
+    return subprocess.run(list(cmd), check=False, timeout=timeout, capture_output=True, text=True)
+
+
+def read_env(path):
+    out = {}
+    try:
+        for line in path.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if line and not line.startswith("#") and "=" in line:
+                k, _, v = line.partition("=")
+                out[k.strip()] = v.strip().strip("'\"")
+    except OSError:
+        pass
+    return out
+
+
+def tree_size(path, skip_backups=False):
+    total = 0
+    for dirpath, dirnames, filenames in os.walk(path):
+        if skip_backups and pathlib.Path(dirpath) == DATA:
+            dirnames[:] = [d for d in dirnames if d != "backups"]
+        for name in filenames:
+            try:
+                total += os.path.getsize(os.path.join(dirpath, name))
+            except OSError:
+                pass
+    return total
+
+
+def http_get(url, limit, accept="application/octet-stream"):
+    if not url.startswith("https://"):
+        raise Fail("Refusing a non-HTTPS download.")
+    req = urllib.request.Request(url, headers={"User-Agent": "shopdesk-updater", "Accept": accept})
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            if not resp.geturl().startswith("https://"):
+                raise Fail("Download was redirected to a non-HTTPS address.")
+            data = resp.read(limit + 1)
+    except urllib.error.HTTPError as e:
+        raise Fail("Download failed (HTTP %d)." % e.code)
+    except (urllib.error.URLError, OSError, TimeoutError):
+        raise Fail("Could not reach GitHub.")
+    if len(data) > limit:
+        raise Fail("Download is larger than the allowed size.")
+    return data
+
+
+def fix_ownership(root):
+    """Everything under the data folder (except the root-only backups) belongs to the app user."""
+    for dirpath, dirnames, filenames in os.walk(root):
+        if pathlib.Path(dirpath) == root:
+            dirnames[:] = [d for d in dirnames if d != "backups"]
+        for name in dirnames + filenames:
+            p = os.path.join(dirpath, name)
+            if not os.path.islink(p):
+                shutil.chown(p, USER, USER)
+    shutil.chown(root, USER, USER)
+
+
+def fix_code_permissions(root):
+    """Same as the installer: root-owned, readable by the service group, not writable by it."""
+    for dirpath, dirnames, filenames in os.walk(root):
+        shutil.chown(dirpath, "root", USER)
+        os.chmod(dirpath, 0o750)
+        for name in filenames:
+            p = os.path.join(dirpath, name)
+            shutil.chown(p, "root", USER)
+            os.chmod(p, 0o640)
+
+
+def backup_sqlite(src, dst):
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    a = sqlite3.connect("file:%s?mode=ro" % urllib.parse.quote(str(src)), uri=True)
+    b = sqlite3.connect(str(dst))
+    try:
+        a.backup(b)
+    finally:
+        b.close()
+        a.close()
+
+
+def make_backup(stamp):
+    """Consistent copy of every database, all other data files, and the current code."""
+    dest = BACKUPS / stamp
+    BACKUPS.mkdir(mode=0o700, exist_ok=True)
+    os.chmod(BACKUPS, 0o700)
+    dest.mkdir(mode=0o700)
+    data_dst = dest / "data"
+    for dirpath, dirnames, filenames in os.walk(DATA):
+        here = pathlib.Path(dirpath)
+        if here == DATA:
+            dirnames[:] = [d for d in dirnames if d != "backups"]
+        rel = here.relative_to(DATA)
+        (data_dst / rel).mkdir(parents=True, exist_ok=True)
+        for name in filenames:
+            src = here / name
+            if name in ("update-request", "update-status.json", "update.lock") and here == DATA:
+                continue
+            if name.endswith((".db-wal", ".db-shm", ".tmp")):
+                continue
+            if name.endswith(".db"):
+                backup_sqlite(src, data_dst / rel / name)
+            else:
+                shutil.copy2(src, data_dst / rel / name)
+    shutil.copytree(CODE, dest / "code", ignore=shutil.ignore_patterns("__pycache__"))
+    return dest
+
+
+def prune_backups():
+    if not BACKUPS.is_dir():
+        return
+    old = sorted(p for p in BACKUPS.iterdir() if p.is_dir())[:-KEEP_BACKUPS]
+    for p in old:
+        shutil.rmtree(p, ignore_errors=True)
+
+
+def safe_extract(tar_path, dest):
+    """Unpack by hand: regular files and directories only, no escaping paths, total size capped."""
+    dest.mkdir(parents=True)
+    base = dest.resolve()
+    total = 0
+    with tarfile.open(tar_path, "r:gz") as tf:
+        for m in tf:
+            parts = pathlib.PurePosixPath(m.name).parts
+            if m.name.startswith("/") or ".." in parts or any("\\" in p or "\0" in p for p in parts):
+                raise Fail("The release archive contains an unsafe path.")
+            if not parts:
+                continue
+            target = (base.joinpath(*parts)).resolve()
+            if base != target and base not in target.parents:
+                raise Fail("The release archive contains an unsafe path.")
+            if m.isdir():
+                target.mkdir(parents=True, exist_ok=True)
+            elif m.isfile():
+                total += m.size
+                if total > MAX_UNPACKED:
+                    raise Fail("The release archive unpacks to more than the allowed size.")
+                target.parent.mkdir(parents=True, exist_ok=True)
+                with tf.extractfile(m) as src, open(target, "wb") as out:
+                    shutil.copyfileobj(src, out)
+            # anything else (symlinks, devices, pax headers) is ignored, never created
+
+
+def find_source_root(extracted):
+    hits = [p.parent for p in list(extracted.glob("server.py")) + list(extracted.glob("*/server.py"))]
+    if len(hits) != 1:
+        raise Fail("The release archive does not look like ShopDesk (expected exactly one server.py).")
+    return hits[0]
+
+
+def validate_and_stage(src, target_version):
+    """Check the new code, then copy only what the app needs into /opt/shopdesk.new."""
+    for need in ("server.py", "VERSION", "static/index.html", "shopdesk/__init__.py", "shopdesk/app.py",
+                 "shopdesk/migrations/tenant", "shopdesk/migrations/platform"):
+        if not (src / need).exists():
+            raise Fail("The release is incomplete (missing %s)." % need)
+    if read_version(src) != target_version:
+        raise Fail("The release's VERSION file says %s but the tag is v%s." % (read_version(src), target_version))
+    for py in list(src.glob("server.py")) + list((src / "shopdesk").rglob("*.py")):
+        try:
+            compile(py.read_text(encoding="utf-8"), str(py), "exec")      # syntax check only; never imported or run
+        except (SyntaxError, ValueError, UnicodeDecodeError) as e:
+            raise Fail("The release has a Python error in %s: %s" % (py.name, e))
+    shutil.rmtree(STAGE, ignore_errors=True)
+    STAGE.mkdir()
+    shutil.copy2(src / "server.py", STAGE / "server.py")
+    shutil.copy2(src / "VERSION", STAGE / "VERSION")
+    shutil.copytree(src / "static", STAGE / "static")
+    shutil.copytree(src / "shopdesk", STAGE / "shopdesk", ignore=shutil.ignore_patterns("__pycache__"))
+
+
+def health(port, expect_version, seconds):
+    """Wait until /healthz answers ok with the expected version. Returns (ok, detail)."""
+    deadline = time.time() + seconds
+    detail = "no answer"
+    while time.time() < deadline:
+        state = run("systemctl", "is-active", SERVICE).stdout.strip()
+        if state == "failed":
+            return False, "the service failed to start"
+        try:
+            with urllib.request.urlopen("http://127.0.0.1:%d/healthz" % port, timeout=3) as r:
+                data = json.loads(r.read(10000))
+            if data.get("ok") and data.get("version") == expect_version:
+                return True, ""
+            detail = "app reports version %s" % data.get("version")
+        except (urllib.error.URLError, OSError, ValueError, TimeoutError):
+            detail = "no answer yet"
+        time.sleep(2)
+    return False, "health check timed out (%s)" % detail
+
+
+def restore(backup, port, from_version):
+    """Put back the previous code and databases, then restart. Returns True when the old version answers again."""
+    run(*("systemctl", "stop", SERVICE))
+    shutil.rmtree(CODE, ignore_errors=True)
+    shutil.copytree(backup / "code", CODE)
+    fix_code_permissions(CODE)
+    src_data = backup / "data"
+    for src in src_data.rglob("*.db"):
+        dest = DATA / src.relative_to(src_data)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        for suffix in ("-wal", "-shm"):
+            try:
+                pathlib.Path(str(dest) + suffix).unlink()
+            except FileNotFoundError:
+                pass
+        tmp = pathlib.Path(str(dest) + ".restore")
+        shutil.copy2(src, tmp)
+        os.replace(tmp, dest)
+    fix_ownership(DATA)
+    run("systemctl", "start", SERVICE)
+    ok, _ = health(port, from_version, HEALTH_SECONDS)
+    return ok
+
+
+# ------------------------------------------------------------------ main flow
+def take_request():
+    try:
+        tag = REQUEST.read_text(encoding="ascii", errors="replace").strip()
+    except OSError:
+        tag = ""
+    try:
+        REQUEST.unlink()                      # remove first, so the .path unit cannot re-trigger
+    except OSError:
+        pass
+    return tag if TAG_RE.match(tag) else None
+
+
+def update(st, tag):
+    repo = read_env(CONF).get("SHOPDESK_UPDATE_REPO", "")
+    if not REPO_RE.match(repo):
+        raise Fail("/etc/shopdesk/update.conf has no valid SHOPDESK_UPDATE_REPO.")
+    port = int(read_env(ENVFILE).get("SHOPDESK_PORT", "8080") or 8080)
+    current = read_version(CODE)
+    target = tag[1:]
+    st.set("check", "Checking the release…", targetVersion=target)
+
+    raw = http_get("https://api.github.com/repos/%s/releases/latest" % repo, 2_000_000,
+                   accept="application/vnd.github+json")
+    try:
+        release = json.loads(raw)
+    except ValueError:
+        raise Fail("GitHub sent an unreadable answer.")
+    if release.get("tag_name") != tag:
+        raise Fail("The latest release is now %s, not %s. Check for updates again." % (release.get("tag_name"), tag))
+    if not (semver(target) and semver(current) and semver(target) > semver(current)):
+        st.finish("success", "Already up to date (version %s)." % current)
+        return
+    tar_name, sha_name = "shopdesk-%s.tar.gz" % tag, "shopdesk-%s.tar.gz.sha256" % tag
+    prefix = "https://github.com/%s/releases/download/%s/" % (repo, tag)
+    urls = {}
+    for asset in release.get("assets") or []:
+        if isinstance(asset, dict) and asset.get("name") in (tar_name, sha_name):
+            url = asset.get("browser_download_url") or ""
+            if not url.startswith(prefix):
+                raise Fail("A release file points somewhere unexpected; refusing it.")
+            urls[asset["name"]] = url
+    if len(urls) != 2:
+        raise Fail("The release is missing %s or %s." % (tar_name, sha_name))
+
+    need = 2 * tree_size(DATA, skip_backups=True) + 2 * tree_size(CODE) + 100 * 1024 * 1024
+    if shutil.disk_usage(DATA).free < need:
+        raise Fail("Not enough free disk space for a safe backup and update.")
+
+    st.set("download", "Downloading %s…" % tar_name)
+    shutil.rmtree(DOWNLOADS, ignore_errors=True)
+    DOWNLOADS.mkdir(mode=0o700)
+    tarball = http_get(urls[tar_name], MAX_DOWNLOAD)
+    checksum = http_get(urls[sha_name], 4096).decode("ascii", errors="replace").split()
+    st.set("verify", "Verifying the download…")
+    if not checksum or not SHA_RE.match(checksum[0]):
+        raise Fail("The .sha256 file is not valid.")
+    if hashlib.sha256(tarball).hexdigest() != checksum[0].lower():
+        raise Fail("The download does not match its SHA-256 checksum; nothing was changed.")
+    tar_path = DOWNLOADS / tar_name
+    tar_path.write_bytes(tarball)
+
+    st.set("prepare", "Unpacking and checking the new version…")
+    shutil.rmtree(EXTRACT, ignore_errors=True)
+    safe_extract(tar_path, EXTRACT)
+    validate_and_stage(find_source_root(EXTRACT), target)
+
+    # ---- point of no return for the running app: from here a failure rolls back
+    stamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d-%H%M%S") + "-v" + current
+    backup = None
+    try:
+        st.set("stop", "Stopping ShopDesk for the update…")
+        r = run("systemctl", "stop", SERVICE)
+        if r.returncode != 0:
+            raise Fail("Could not stop the service: %s" % r.stderr.strip()[:200])
+        st.set("backup", "Backing up the data and current code…")
+        backup = make_backup(stamp)
+        st.set("backup", "Backup saved.", backup=str(backup))
+        st.set("install", "Installing version %s…" % target)
+        shutil.rmtree(PREV, ignore_errors=True)
+        os.rename(CODE, PREV)
+        os.rename(STAGE, CODE)
+        fix_code_permissions(CODE)
+        fix_ownership(DATA)
+        st.set("start", "Starting ShopDesk (database migrations run now)…")
+        r = run("systemctl", "start", SERVICE)
+        if r.returncode != 0:
+            raise Fail("The service did not start: %s" % r.stderr.strip()[:200])
+        st.set("health", "Waiting for the new version to answer…")
+        ok, detail = health(port, target, HEALTH_SECONDS)
+        if not ok:
+            raise Fail("The new version did not come up: %s." % detail)
+    except Exception as e:                       # noqa: BLE001 - every failure here must roll back
+        reason = str(e) if isinstance(e, Fail) else "Unexpected error: %s" % e
+        st.set("rollback", "Update failed. Restoring the previous version and data…", error=reason)
+        restored = False
+        if backup is not None:
+            try:
+                restored = restore(backup, port, current)
+            except Exception as e2:              # noqa: BLE001
+                log("rollback error: %s" % e2)
+        if restored:
+            st.finish("failed", "The update failed and was rolled back. Your data and version %s are as before." % current,
+                      error=reason, rolledBack=True)
+        else:
+            st.finish("failed", "The update failed and the automatic rollback did not complete. Restore manually from %s "
+                      "(see RELEASING.md)." % (backup or "the latest backup in /var/lib/shopdesk/backups"),
+                      error=reason, rolledBack=False)
+        return
+    prune_backups()
+    st.finish("success", "Updated to %s." % target)
+
+
+def main():
+    if os.geteuid() != 0:
+        sys.exit("shopdesk-update must run as root")
+    DATA.mkdir(parents=True, exist_ok=True)
+    lock = open(LOCK, "a+")
+    try:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        log("another update is already running")
+        return 0
+    os.chmod(LOCK, 0o644)
+    tag = take_request()
+    st = Status()
+    try:
+        if tag is None:
+            raise Fail("No valid update request was found.")
+        update(st, tag)
+    except Fail as e:
+        st.finish("failed", "The update was not started. No changes were made.", error=str(e), rolledBack=False)
+    except Exception as e:                       # noqa: BLE001
+        st.finish("failed", "The update stopped unexpectedly.", error="Unexpected error: %s" % e, rolledBack=False)
+    finally:
+        for p in (EXTRACT, DOWNLOADS, STAGE):
+            shutil.rmtree(p, ignore_errors=True)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
