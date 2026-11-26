@@ -10,8 +10,8 @@ function ledgerRef(e) {
   return e.ref_label ? h("span", null, e.ref_label) : null;
 }
 
-function flowTile(label, cents, note, signed) {
-  return h("div", { class: "tile " + flowClass(cents) },
+function flowTile(label, cents, note, signed, cls) {
+  return h("div", { class: "tile " + (cls || flowClass(cents)) },
     h("span", { class: "big" }, signed ? signedMoney(cents) : money(cents)), h("span", null, label),
     note ? h("span", { class: "muted small" }, note) : null);
 }
@@ -108,7 +108,7 @@ async function ledgerView() {
     rows = r.entries; total = r.total;
     body.replaceChildren(); addRows(rows);
     tiles.replaceChildren(flowTile("Balance now", r.balance_cents, r.balance_cents < 0 ? "Negative" : "Positive", true),
-      flowTile("Money in", r.money_in), flowTile("Money out", r.money_out), flowTile("Net for this view", r.net, null, true));
+      flowTile("Money in", r.money_in), flowTile("Money out", r.money_out, null, false, "neg"), flowTile("Net for this view", r.net, null, true));
     sentence.textContent = r.total === 0 && r.balance_cents === 0 ? "No money has moved yet." : flowSentence(r.net, "in this view") + " " + flowSentence(r.balance_cents, "overall");
     empty.textContent = rows.length ? "" : "No ledger entries match.";
     more.style.display = rows.length < total ? "" : "none";
