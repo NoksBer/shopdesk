@@ -311,3 +311,18 @@ nav.nav .menu-list a.active { background: var(--bg); }
 .file-chip button { border: 0; background: none; padding: 0 .2rem; min-height: 0; cursor: pointer; color: var(--muted); }
 .card.dropping { outline: 2px dashed var(--accent); }
 
+
+/* v0.0.12 customer touch bases */
+:root { --touch: #c792ea; }
+dialog.modal { width: min(92vw, 30rem); max-height: 90vh; overflow: auto; padding: 1rem; background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 12px; }
+dialog.modal::backdrop { background: rgba(0, 0, 0, .55); }
+dialog.modal h2 { margin: 0 0 .4rem; font-size: 1.1rem; }
+.tb-row { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem .6rem; margin: .5rem 0; }
+.tb-row label { margin: 0; flex: 0 0 auto; }
+.tb-row input { width: 9rem; flex: 0 1 auto; }
+.tb-quick { display: flex; flex-wrap: wrap; gap: .4rem; margin: .4rem 0 .6rem; }
+.cal-chip.tb { width: 100%; text-align: left; font: inherit; font-size: .72rem; cursor: pointer; color: var(--touch); border: 0; border-left: 3px solid var(--touch); background: rgba(199, 146, 234, .14); }
+.badge.tb-badge { color: var(--touch); border-color: var(--touch); }
+.tb-agenda { margin: .4rem 0; }
+.tb-date { color: var(--touch); font-weight: 600; }
+.card.tb-note { border-color: var(--touch); }

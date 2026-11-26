@@ -37,7 +37,7 @@ function cashflowCard(led) {
     h("p", { class: "muted small" }, "Every payment received and every cost recorded in the ledger. " + flowSentence(led.balance_cents, "overall")),
     h("div", { class: "tiles" },
       flowTile("Balance", led.balance_cents, led.balance_cents < 0 ? "Negative" : "Positive", true),
-      flowTile("Money in (this month)", tm.money_in), flowTile("Money out (this month)", tm.money_out),
+      flowTile("Money in (this month)", tm.money_in), flowTile("Money out (this month)", tm.money_out, null, false, "neg"),
       flowTile("Net (this month)", tm.net, null, true)),
     h("div", { class: "bars six" }, bars),
     h("div", { class: "legend small muted" }, h("span", { class: "dot in" }), " in  ", h("span", { class: "dot out" }), " out"),

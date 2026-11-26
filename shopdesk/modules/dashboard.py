@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 
 from .. import books
 from .. import timekeeping as tk
+from . import touchbases
 
 _R = "(:restrict = 0 OR EXISTS (SELECT 1 FROM ticket_assignees ra WHERE ra.ticket_id = t.id AND ra.user_id = :uid))"
 
@@ -108,8 +109,10 @@ def get_dashboard(ctx):
     out = {"tickets": None, "revenue": _revenue(ctx.db) if user.can("invoices.read") else None,
            "ledger": books.summary(ctx.db, recent=5) if user.can("ledger.read") else None,
            "time": _time(ctx)}
+    out["touch_bases"] = None
     if user.can("tickets.read"):
         out["tickets"] = _tickets(ctx)
+        out["touch_bases"] = touchbases.upcoming(ctx)
     return out
 
 

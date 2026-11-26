@@ -27,8 +27,10 @@ async function boardView() {
     const prev = { ...t };
     Object.assign(t, { status_id: st.id, status_name: st.name, status_closed: st.is_closed });
     draw();                                                   // optimistic; undone if the server refuses
-    try { await api("POST", "/api/tickets/" + enc(id) + "/status", { status_id: statusId }); errBox.textContent = ""; }
-    catch (e) { Object.assign(t, prev); draw(); errBox.textContent = "Could not move #" + t.number + ": " + e.message; }
+    let res;
+    try { res = await api("POST", "/api/tickets/" + enc(id) + "/status", { status_id: statusId }); errBox.textContent = ""; }
+    catch (e) { Object.assign(t, prev); draw(); errBox.textContent = "Could not move #" + t.number + ": " + e.message; return; }
+    try { maybeOfferTouchBase(res); } catch (e) { /* the touch base popup is optional; the move already succeeded */ }
   }
 
   async function setPriority(t, priority) {
@@ -143,22 +145,24 @@ async function calendarView() {
   const grid = h("div", { class: "cal-grid" });
   const agenda = h("div", { class: "cal-agenda" });
   const errBox = h("div", { class: "error", role: "alert" });
-  let byDay = {};
+  let byDay = {}, tbByDay = {};
 
   async function load() {
     const first = new Date(calState.y, calState.m, 1);
     const start = new Date(calState.y, calState.m, 1 - first.getDay());
     const days = [];
     for (let i = 0; i < 42; i++) days.push(new Date(start.getFullYear(), start.getMonth(), start.getDate() + i));
-    const r = await api("GET", "/api/calendar?from=" + ymd(days[0]) + "&to=" + ymd(days[41]));
-    byDay = {};
+    const range = "from=" + ymd(days[0]) + "&to=" + ymd(days[41]);
+    const [r, tbr] = await Promise.all([api("GET", "/api/calendar?" + range), api("GET", "/api/touch-bases?" + range)]);
+    byDay = {}; tbByDay = {};
     for (const t of r.tickets) (byDay[t.due_date] = byDay[t.due_date] || []).push(t);
+    for (const b of tbr.touch_bases) (tbByDay[b.due_date] = tbByDay[b.due_date] || []).push(b);
     title.textContent = MONTHS[calState.m] + " " + calState.y;
     const todayStr = localToday();
     grid.replaceChildren(
       ...["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map(d => h("div", { class: "cal-head" }, d)),
       ...days.map(d => {
-        const key = ymd(d), list = byDay[key] || [];
+        const key = ymd(d), list = byDay[key] || [], tbs = tbByDay[key] || [];
         const open = list.filter(t => !t.status_closed).length;
         return h("div", { class: "cal-day" + (d.getMonth() !== calState.m ? " other" : "") + (key === todayStr ? " today" : "") +
             (key === calState.selected ? " selected" : ""), role: "button", tabindex: "0", "aria-label": key + ", " + list.length + " due",
@@ -169,21 +173,25 @@ async function calendarView() {
             href: "#/tickets/" + enc(t.id), title: "#" + t.number + " " + t.title + " (" + t.customer_name + ")",
             onclick: (e) => e.stopPropagation() }, "#" + t.number + " " + t.title)),
           list.length > 3 ? h("div", { class: "cal-more" }, "+" + (list.length - 3) + " more") : null,
-          list.length ? h("div", { class: "cal-count" + (open && key < todayStr ? " late" : "") }, String(list.length)) : null);
+          tbs.slice(0, 2).map(b => h("button", { type: "button", class: "cal-chip tb", title: "Touch base: " + b.customer_name + " (from #" + b.ticket_number + ")",
+            onclick: (e) => { e.stopPropagation(); touchBaseDetail(b, () => load().catch(showError(errBox))); } }, "↻ Touch base: " + b.customer_name)),
+          list.length + tbs.length ? h("div", { class: "cal-count" + (open && key < todayStr ? " late" : "") }, String(list.length + tbs.length)) : null);
       }));
     drawSelection();
   }
 
   function drawSelection() {
     for (const el of grid.querySelectorAll(".cal-day")) el.classList.toggle("selected", el.getAttribute("aria-label").startsWith(calState.selected));
-    const list = byDay[calState.selected] || [];
-    agenda.replaceChildren(h("h3", null, calState.selected + (calState.selected === localToday() ? " (today)" : "")),
+    const list = byDay[calState.selected] || [], tbs = tbByDay[calState.selected] || [];
+    agenda.replaceChildren(...[h("h3", null, calState.selected + (calState.selected === localToday() ? " (today)" : "")),
+      ...tbs.map(b => h("p", { class: "tb-agenda" },h("span", { class: "badge tb-badge" }, "Touch base"), " " + b.customer_name + " · follow-up to #" + b.ticket_number + " ",
+        h("button", { type: "button", class: "mini", onclick: () => touchBaseDetail(b, () => load().catch(showError(errBox))) }, "Open"))),
       list.length ? h("div", { class: "table-wrap" }, h("table", null,
         h("thead", null, h("tr", null, ["#", "Title", "Customer", "Status", "Priority"].map(t => h("th", null, t)))),
         h("tbody", null, list.map(t => h("tr", null,
           h("td", null, h("a", { href: "#/tickets/" + enc(t.id) }, t.number)), h("td", null, t.title), h("td", null, t.customer_name),
           h("td", null, t.status_name), h("td", { class: "prio-" + t.priority }, t.priority))))))
-        : h("p", { class: "muted" }, "No jobs due this day."));
+        : (tbs.length ? null : h("p", { class: "muted" }, "No jobs due this day."))].filter(Boolean));
   }
 
   const go = (delta) => { const d = new Date(calState.y, calState.m + delta, 1); calState.y = d.getFullYear(); calState.m = d.getMonth(); load().catch(showError(errBox)); };
@@ -193,5 +201,5 @@ async function calendarView() {
     h("button", { type: "button", onclick: () => go(1), "aria-label": "Next month" }, "›"),
     h("button", { type: "button", onclick: () => { const n = new Date(); calState = { y: n.getFullYear(), m: n.getMonth(), selected: localToday() }; load().catch(showError(errBox)); } }, "Today"));
   await load();
-  return [h("section", { class: "card" }, bar, errBox, h("p", { class: "muted small" }, "Job due dates. Red means overdue and still open."), grid), h("section", { class: "card" }, agenda)];
+  return [h("section", { class: "card" }, bar, errBox, h("p", { class: "muted small" }, "Job due dates. Red means overdue and still open. Purple items are customer touch bases."), grid), h("section", { class: "card" }, agenda)];
 }

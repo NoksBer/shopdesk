@@ -112,6 +112,11 @@ def _load(ctx, ticket_id):
     return row
 
 
+def _completed(is_closed, name):
+    """A closed status that is not 'Cancelled' (touch bases are offered for completed work only)."""
+    return bool(is_closed) and "cancel" not in (name or "").lower()
+
+
 def _history(db, ticket_id, user_id, kind, detail=None):
     db.execute("INSERT INTO ticket_history(ticket_id, ts, user_id, kind, detail) VALUES(?,?,?,?,?)",
                (ticket_id, now_iso(), user_id, kind, json.dumps(detail or {}, sort_keys=True)))
@@ -398,7 +403,13 @@ def set_status(ctx):
         if new["is_closed"] and not was_closed:
             tk.stop_all_on_ticket(db, old["id"], ts, ctx.user.id)      # nobody keeps clocking time on a finished job
         audit(db, ctx.user.id, "ticket.status", "ticket", old["id"], {"to": new["name"]}, ctx.req.ip)
-    return _detail(ctx, _load(ctx, old["id"]))
+    out = _detail(ctx, _load(ctx, old["id"]))
+    # Tell the screen whether to offer the optional "Customer Touch Base" popup. Never blocks or changes the close.
+    out["touch_base_offer"] = (
+        _completed(new["is_closed"], new["name"]) and not _completed(old["status_closed"], old["status_name"])
+        and db.execute("SELECT 1 FROM touch_bases WHERE ticket_id=? AND status='scheduled'",
+                       (old["id"],)).fetchone() is None)
+    return out
 
 
 def set_priority(ctx):

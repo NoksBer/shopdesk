@@ -100,7 +100,9 @@ def make_server(app, host=None, port=None):
 
 
 def serve(app):
+    from . import touchjob
     server = make_server(app)
+    touchjob.start(app.config)          # touch-base follow-up tickets: once now, then about hourly (never raises)
     sys.stderr.write(json.dumps({"level": "info", "msg": "listening",
                                  "host": app.config.host, "port": app.config.port}) + "\n")
     try:

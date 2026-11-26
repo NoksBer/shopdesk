@@ -91,7 +91,7 @@ class App:
         self.router = Router()
         from .modules import (accounts, branding, business, customers, dashboard, equipment, inventory, invoices,
                               platform_admin, services, team, tickets)
-        from .modules import ledger, ticketnotes, timetracking, updates
+        from .modules import ledger, ticketnotes, timetracking, touchbases, updates
         from .updater import UpdateChecker
         self.update_checker = UpdateChecker(config)
         updates.register(self.router)
@@ -99,6 +99,7 @@ class App:
         ledger.register(self.router)
         timetracking.register(self.router)
         ticketnotes.register(self.router)
+        touchbases.register(self.router)
         accounts.register(self.router)
         dashboard.register(self.router)
         business.register(self.router)

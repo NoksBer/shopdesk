@@ -14,6 +14,8 @@ Version 6 adds: **self-service shop sign-up**, a **cash ledger** and **time trac
 
 **Ticket notes and attachments (v0.0.11):** every ticket has a Notes & attachments thread. Add text, paste a screenshot straight from the clipboard, drop files or use Attach (images, PDF, text/CSV, Word/Excel/PowerPoint, zip; up to 10 MB each, 10 per note). Files are stored in the shop's own database, so they are isolated per shop and included in backups. Notes and attached files cannot be edited or deleted afterwards (a file can be removed only before the note is added). Files are not virus-scanned; everything except images downloads as an attachment.
 
+**Customer touch bases (v0.0.12):** when a ticket is moved to Completed / Closed (not Cancelled), an optional "Customer Touch Base" popup offers to schedule a follow-up in 30/60/90 days, 6 months, 1 year or on a chosen date (MM/DD/YYYY). Skip is the default and never blocks closing. Scheduled touch bases show on the Calendar (purple), on the dashboard ("Upcoming touch bases") and on the original ticket, where they can be rescheduled or cancelled. On the due date a background job inside the app (it runs at startup and about every hour, and catches up after downtime) creates one low-priority "Touch base: <customer> (follow-up to #<number>)" ticket in the first status, assigned to the original ticket's staff if any, and writes an audit entry. Dates use the server's UTC date. Customers that were archived in the meantime are skipped (the touch base is cancelled and audited); suspended shops are skipped until reactivated.
+
 ## Layout (same as Plateful)
 
 ```

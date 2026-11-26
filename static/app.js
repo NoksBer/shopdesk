@@ -379,7 +379,7 @@ function equipmentCard(customer, defs, items) {
 
 // ------------------------------------------------------------ dashboard
 async function dashboardView() {
-  const { tickets, revenue, ledger, time } = await api("GET", "/api/dashboard");
+  const { tickets, revenue, ledger, time, touch_bases } = await api("GET", "/api/dashboard");
   const nodes = [h("section", { class: "card" }, h("h2", null, "Welcome, " + ME.user.name),
     h("p", { class: "muted" }, ME.business.name))];
   if (revenue || ledger) await biz();
@@ -396,6 +396,7 @@ async function dashboardView() {
     ...(c.unassigned === null ? [] : [tile("Unassigned", c.unassigned, "#/tickets", true)]),
     tile("Closed in 7 days", c.closed_week)));
 
+  if (touch_bases) nodes.push(touchBaseCard(touch_bases));
   const open = tickets.by_status.filter(s => !s.is_closed);
   nodes.push(h("section", { class: "card" }, h("h2", null, "Open by status"),
     open.length ? h("ul", { class: "history" }, open.map(s => h("li", null, h("strong", null, String(s.n)), "  " + s.name))) : h("p", { class: "muted" }, "No statuses.")));
@@ -577,6 +578,9 @@ function describeHistory(e) {
     case "time_out": return "Clocked out (" + fmtHM(d.seconds || 0) + ")";
     case "time_added": return "Added " + fmtHM(d.seconds || 0) + " of time";
     case "time_removed": return "Removed " + fmtHM(d.seconds || 0) + " of time";
+    case "touch_base": return d.action === "scheduled" ? "Scheduled a customer touch base for " + d.due_date
+      : d.action === "rescheduled" ? "Rescheduled the touch base to " + d.due_date
+      : d.action === "cancelled" ? "Cancelled the touch base" : "Touch base follow-up ticket #" + (d.number || "") + " created";
     case "note": return "Added a note" + (d.files ? " with " + d.files + (d.files === 1 ? " file" : " files") : "");
     default: return e.kind;
   }
@@ -592,7 +596,7 @@ async function ticketDetail(id) {
   // header + status
   const options = st.statuses.map(s => h("option", { value: s.id, selected: s.id === t.status_id }, s.name));
   if (!st.statuses.some(s => s.id === t.status_id)) options.unshift(h("option", { value: t.status_id, selected: true, disabled: true }, t.status_name));
-  const statusSel = h("select", { onchange: (e) => run(() => api("POST", "/api/tickets/" + eid + "/status", { status_id: e.target.value }))() }, options);
+  const statusSel = h("select", { onchange: (e) => run(async () => maybeOfferTouchBase(await api("POST", "/api/tickets/" + eid + "/status", { status_id: e.target.value })))() }, options);
   if (!can("tickets.write")) statusSel.setAttribute("disabled", "");
   nodes.push(h("section", { class: "card" },
     h("h2", null, "#" + t.number + " · " + t.title),
@@ -602,8 +606,10 @@ async function ticketDetail(id) {
     h("p", { class: "muted" }, "Priority " + t.priority + (t.due_date ? " · due " + t.due_date : "") +
       (t.closed_at ? " · closed " + t.closed_at : "")),
     t.symptoms ? h("p", null, h("strong", null, "Reported: "), t.symptoms) : null,
-    t.intake_notes ? h("p", null, h("strong", null, "Intake notes: "), t.intake_notes) : null,
+    t.intake_notes ? h("p", { class: "note-body" }, h("strong", null, "Intake notes: "), t.intake_notes) : null,
     msg));
+  const tbNote = await touchBaseNote(t);               // "Customer touch base scheduled for ..." with reschedule / cancel
+  if (tbNote) nodes.push(tbNote);
 
   // equipment + edit
   if (can("tickets.write")) {
