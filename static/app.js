@@ -577,6 +577,7 @@ function describeHistory(e) {
     case "time_out": return "Clocked out (" + fmtHM(d.seconds || 0) + ")";
     case "time_added": return "Added " + fmtHM(d.seconds || 0) + " of time";
     case "time_removed": return "Removed " + fmtHM(d.seconds || 0) + " of time";
+    case "note": return "Added a note" + (d.files ? " with " + d.files + (d.files === 1 ? " file" : " files") : "");
     default: return e.kind;
   }
 }
@@ -662,6 +663,9 @@ async function ticketDetail(id) {
         " · " + i.status + " · " + money(i.total_cents)))) : h("p", { class: "muted" }, "No invoices yet."),
       can("invoices.write") ? h("a", { class: "btn", href: "#/invoices/new?ticket=" + eid }, "+ Create invoice for this ticket") : null));
   }
+
+  // notes and attachments
+  nodes.push(await ticketNotesCard(t));
 
   // history
   nodes.push(h("section", { class: "card" }, h("h2", null, "History"),

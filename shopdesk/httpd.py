@@ -1,12 +1,16 @@
 """HTTP transport: turns sockets into Request objects and Response objects back into bytes."""
 import ipaddress
 import json
+import re
 import sys
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlsplit
 
 from .http_util import Request
+
+
+UPLOAD_PATH = re.compile(r"^/api/tickets/[A-Za-z0-9_-]{1,64}/files$")
 
 
 def _client_ip(handler, trust_proxy):
@@ -66,7 +70,13 @@ def make_handler(app):
                     n = int(length)
                 except ValueError:
                     return self._send(400, b'{"error":"Bad Content-Length"}', "application/json", close=True)
-                if n < 0 or n > cfg.max_body_bytes:
+                limit = cfg.max_body_bytes
+                # Only the ticket file-upload route may send a large body, and only with a session cookie present
+                # (the body is read before authentication, so anonymous callers keep the small limit).
+                if (self.command == "POST" and UPLOAD_PATH.match(parts.path)
+                        and "sd_session=" in (self.headers.get("Cookie") or "")):
+                    limit = cfg.max_upload_bytes
+                if n < 0 or n > limit:
                     return self._send(413, b'{"error":"Request too large"}', "application/json", close=True)
                 body = self.rfile.read(n)
             https = cfg.trust_proxy and self.headers.get("X-Forwarded-Proto", "").lower() == "https"

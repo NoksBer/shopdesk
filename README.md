@@ -12,6 +12,8 @@ Version 6 adds: **self-service shop sign-up**, a **cash ledger** and **time trac
 
 **Software updates (v6.1):** the platform administrator (not shop owners) can open `/admin.html`, check GitHub Releases for a newer version and click **Update now**; the server backs up, installs the release, restarts and rolls back automatically if the new version does not come up. How to publish a release and how existing installs get the updater: [RELEASING.md](RELEASING.md). The current version is in the `VERSION` file.
 
+**Ticket notes and attachments (v0.0.11):** every ticket has a Notes & attachments thread. Add text, paste a screenshot straight from the clipboard, drop files or use Attach (images, PDF, text/CSV, Word/Excel/PowerPoint, zip; up to 10 MB each, 10 per note). Files are stored in the shop's own database, so they are isolated per shop and included in backups. Notes and attached files cannot be edited or deleted afterwards (a file can be removed only before the note is added). Files are not virus-scanned; everything except images downloads as an attachment.
+
 ## Layout (same as Plateful)
 
 ```

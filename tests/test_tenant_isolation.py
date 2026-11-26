@@ -35,6 +35,8 @@ ID_ROUTES_TESTED = {       # routes taking an id; each has an explicit cross-ten
     ("GET", "/api/inventory/<id>"), ("PUT", "/api/inventory/<id>"), ("DELETE", "/api/inventory/<id>"),
     ("POST", "/api/inventory/<id>/adjust"),
     ("POST", "/api/ledger/<id>/reverse"),
+    ("GET", "/api/tickets/<id>/notes"), ("POST", "/api/tickets/<id>/notes"), ("POST", "/api/tickets/<id>/files"),
+    ("GET", "/api/tickets/<id>/files/<fid>"), ("DELETE", "/api/tickets/<id>/files/<fid>"),
     ("POST", "/api/tickets/<id>/clock-in"), ("GET", "/api/tickets/<id>/time"), ("POST", "/api/tickets/<id>/time"),
     ("PUT", "/api/time/<id>"), ("DELETE", "/api/time/<id>"),
     ("GET", "/api/invoices/<id>"), ("PUT", "/api/invoices/<id>"), ("DELETE", "/api/invoices/<id>"),

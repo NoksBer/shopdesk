@@ -33,6 +33,7 @@ class Config:
         self.static_dir = ROOT_DIR / "static"
         self.migrations_dir = PKG_DIR / "migrations"
         self.max_body_bytes = 1024 * 1024
+        self.max_upload_bytes = 10 * 1024 * 1024 + 64 * 1024     # ticket file uploads only (see httpd.py)
         # Software updates. The repository is fixed here and is NEVER taken from a request or the browser.
         # (The root-owned updater reads its own copy from /etc/shopdesk/update.conf, written by the installer.)
         self.update_repo = UPDATE_REPO

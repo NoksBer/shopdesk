@@ -301,3 +301,13 @@ nav.nav .menu-list a { display: block; padding: .6rem 1rem; border-bottom: 0; }
 nav.nav .menu-list a.active { background: var(--bg); }
 .app-version { text-align: center; padding: 1rem; }
 
+
+/* v0.0.11 ticket notes and attachments */
+.note { border-top: 1px solid var(--line); padding: .6rem 0; }
+.note-body { white-space: pre-wrap; word-break: break-word; margin: .3rem 0; }
+.note-file { display: inline-block; vertical-align: top; margin: .3rem .8rem .3rem 0; max-width: 100%; }
+.note-thumb { display: block; max-width: 220px; max-height: 160px; margin-bottom: .2rem; border: 1px solid var(--line); border-radius: 6px; }
+.file-chip { display: inline-block; margin: .15rem .4rem .15rem 0; padding: .1rem .5rem; border: 1px solid var(--line); border-radius: 999px; font-size: .85rem; color: var(--text); text-decoration: none; word-break: break-all; }
+.file-chip button { border: 0; background: none; padding: 0 .2rem; min-height: 0; cursor: pointer; color: var(--muted); }
+.card.dropping { outline: 2px dashed var(--accent); }
+
