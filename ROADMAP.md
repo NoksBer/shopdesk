@@ -22,7 +22,7 @@ Legend: [x] implemented AND tested (tests run and passing), [~] written, NOT yet
       recent activity. Technicians see only their own assigned tickets. "Today" is the server's UTC date.
 - [~] v3-a. Fix: customer search in the new-ticket form (array passed to `replaceChildren` produced no options). Replaced by a
       type-ahead customer picker also used for invoices; `#/tickets/new?customer=<id>` pre-selects.
-- [~] v3-b. Kanban board (`#/board`): one column per status, cards show priority and due date, drag with mouse or touch handle,
+- [~] v3-b. Kanban Queue (shown as "Queue"; the URL is still `#/board`): one column per status, cards show priority and due date, drag with mouse or touch handle,
       arrow buttons, quick priority change, filters. Closed tickets stay 14 days. `GET /api/board`, `POST /api/tickets/<id>/priority`.
 - [~] v3-c. Calendar (`#/calendar`): month grid of ticket due dates with a day agenda. `GET /api/calendar`.
 - [~] v3-d. Services / pricing catalogue (`#/services`).
@@ -33,7 +33,7 @@ Legend: [x] implemented AND tested (tests run and passing), [~] written, NOT yet
       Not included: partial payments, card payments, emailing invoices, credit notes, discounts as negative lines.
 - [~] v4-a. Dashboard revenue: this month / last month / year to date / outstanding, 12-month bar chart, latest payments.
       Paid invoices only, bucketed by UTC payment month; visible with `invoices.read`.
-- [~] v4-b. Board uses the full screen width: every status fits side by side (no horizontal scrolling on a normal monitor).
+- [~] v4-b. Queue uses the full screen width: every status fits side by side (no horizontal scrolling on a normal monitor).
 - [~] v4-c. White labelling (Settings > Branding): brand colour, top-bar colour, logo (resized to PNG in the browser, stored in the
       tenant database, served only to signed-in users), tagline, show/hide name. Applied across the app.
 - [~] v4-d. Redesigned invoice print-out with logo, brand colour bands, tagline, PAID / VOID stamps.

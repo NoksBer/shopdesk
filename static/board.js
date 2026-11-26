@@ -129,7 +129,7 @@ async function boardView() {
     can("tickets.write") && can("customers.read") ? h("a", { class: "btn primary", href: "#/tickets/new" }, "+ New ticket") : null);
   const intro = (writable ? "Drag a card to another column to change its status (on a phone, hold ⠿ or use the arrows). " : "") +
     "Closed tickets stay for " + data.closed_days + " days.";
-  return [h("div", { class: "board-bar" }, h("h2", null, "Board"), bar, h("span", { class: "muted small" }, intro)), errBox, wrap];
+  return [h("div", { class: "board-bar" }, h("h2", null, "Queue"), bar, h("span", { class: "muted small" }, intro)), errBox, wrap];
 }
 
 // ------------------------------------------------------------ calendar

@@ -117,6 +117,14 @@ function inviteScreen(token) {
 }
 
 // ------------------------------------------------------------ shell + routing
+function versionFooter() {              // small muted "ShopDesk v0.0.10" line at the bottom of every page
+  const el = h("footer", { class: "app-version muted small" });
+  const show = (v) => { if (v) el.textContent = "ShopDesk v" + v; };
+  show(LOADED_VERSION);                 // the version this page was loaded with (from common.js)
+  if (!LOADED_VERSION) api("GET", "/api/version").then((r) => show(r.version)).catch(() => {});
+  return el;
+}
+
 async function dashboard(me) {
   ME = me;
   BIZ = null;
@@ -129,24 +137,47 @@ async function dashboard(me) {
         h("span", { class: "muted" }, me.user.name + " · " + me.user.role_label + "  "),
         h("button", { onclick: async () => { try { await api("POST", "/api/logout", {}); } finally { csrf = ""; ME = null; start(); } } }, "Sign out"))),
     nav,
-    h("main", { id: "content" }));
+    h("main", { id: "content" }),
+    versionFooter());
   window.onhashchange = route;
   await route();
 }
 
+// Top navigation: single links plus three drop-down groups (Records, Billing, gear). Only entries the user may open show.
+function closeMenus() {
+  document.querySelectorAll("#nav .menu.open").forEach((m) => {
+    m.classList.remove("open");
+    m.firstChild.setAttribute("aria-expanded", "false");
+  });
+}
+document.addEventListener("click", closeMenus);
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeMenus(); });
+
 function drawNav(active) {
-  const items = [["#/dashboard", "Dashboard"]];
-  if (can("tickets.read")) items.push(["#/board", "Board"], ["#/tickets", "Tickets"], ["#/calendar", "Calendar"]);
-  if (can("customers.read")) items.push(["#/customers", "Customers"]);
-  if (can("invoices.read")) items.push(["#/invoices", "Invoices"]);
-  if (can("ledger.read")) items.push(["#/ledger", "Ledger"]);
-  if (can("inventory.read")) items.push(["#/inventory", "Inventory"]);
-  if (can("services.read")) items.push(["#/services", "Services"]);
-  if (can("time.write")) items.push(["#/time", "Time"]);
-  if (can("audit.read")) items.push(["#/activity", "Activity"]);
-  items.push(["#/settings", "Settings"]);
-  document.getElementById("nav").replaceChildren(...items.map(([href, label]) =>
-    h("a", { href, class: active === href ? "active" : "" }, label)));
+  const link = ([href, label]) => h("a", { href, class: active === href ? "active" : "", onclick: closeMenus }, label);
+  const group = (label, entries, opts = {}) => {
+    if (!entries.length) return null;
+    const btn = h("button", { type: "button", class: "menu-btn" + (entries.some(([href]) => href === active) ? " active" : ""),
+      "aria-haspopup": "true", "aria-expanded": "false", "aria-label": opts.aria, title: opts.aria,
+      onclick: (e) => {
+        e.stopPropagation();
+        const wasOpen = wrap.classList.contains("open");
+        closeMenus();
+        if (!wasOpen) { wrap.classList.add("open"); btn.setAttribute("aria-expanded", "true"); }
+      } }, label, opts.aria ? null : " ▾");
+    const wrap = h("div", { class: "menu" + (opts.right ? " right" : "") }, btn,
+      h("div", { class: "menu-list" }, entries.map(link)));
+    return wrap;
+  };
+  const only = (perm, entry) => (can(perm) ? [entry] : []);
+  const items = [link(["#/dashboard", "Dashboard"])];
+  if (can("tickets.read")) items.push(link(["#/board", "Queue"]), link(["#/tickets", "Tickets"]), link(["#/calendar", "Calendar"]));
+  items.push(group("Records", [...only("customers.read", ["#/customers", "Customers"]), ...only("inventory.read", ["#/inventory", "Inventory"]),
+    ...only("services.read", ["#/services", "Services"]), ...only("time.write", ["#/time", "Time"])]));
+  items.push(group("Billing", [...only("invoices.read", ["#/invoices", "Invoices"]), ...only("ledger.read", ["#/ledger", "Ledger"])]));
+  items.push(group("⚙", [...only("audit.read", ["#/activity", "Activity"]), ["#/settings", "Settings"]],
+    { right: true, aria: "Activity and settings" }));
+  document.getElementById("nav").replaceChildren(...items.filter(Boolean));
 }
 
 async function route() {
