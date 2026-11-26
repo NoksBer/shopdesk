@@ -205,7 +205,7 @@ async function route() {
   else view = settingsView;
   drawNav(active);
   paintBrand(BRAND);                                  // drops any unsaved colour preview from the settings page
-  content.classList.toggle("wide", active === "#/board");
+  content.classList.toggle("wide", active === "#/board" || active === "#/dashboard");
   content.replaceChildren(h("p", { class: "muted" }, "Loading…"));
   try {
     content.replaceChildren(...await view());
@@ -380,13 +380,14 @@ function equipmentCard(customer, defs, items) {
 // ------------------------------------------------------------ dashboard
 async function dashboardView() {
   const { tickets, revenue, ledger, time, touch_bases } = await api("GET", "/api/dashboard");
-  const nodes = [h("section", { class: "card" }, h("h2", null, "Welcome, " + ME.user.name),
-    h("p", { class: "muted" }, ME.business.name))];
+  // Full-width layout: summary tiles on top, then a grid of cards (technician work first, management figures after).
+  const nodes = [h("h2", { class: "dash-title" }, "Welcome, " + ME.user.name, h("span", { class: "muted" }, " · " + ME.business.name))];
+  const grid = [], mgmt = [];
   if (revenue || ledger) await biz();
-  if (ledger) nodes.push(cashflowCard(ledger));
-  if (revenue) nodes.push(revenueCard(revenue));
-  if (time && time.clocked_in) nodes.push(clockedInCard(time.clocked_in));
-  if (!tickets) return nodes;
+  if (ledger) mgmt.push(cashflowCard(ledger));
+  if (revenue) mgmt.push(revenueCard(revenue));
+  if (time && time.clocked_in) mgmt.push(clockedInCard(time.clocked_in));
+  if (!tickets) return [...nodes, h("div", { class: "dash-grid" }, ...mgmt)];
 
   const c = tickets.counts;
   const tile = (label, value, href, warn) => h("a", { class: "tile" + (warn && value ? " warn" : ""), href: href || "#/tickets" },
@@ -396,21 +397,23 @@ async function dashboardView() {
     ...(c.unassigned === null ? [] : [tile("Unassigned", c.unassigned, "#/tickets", true)]),
     tile("Closed in 7 days", c.closed_week)));
 
-  if (touch_bases) nodes.push(touchBaseCard(touch_bases));
-  const open = tickets.by_status.filter(s => !s.is_closed);
-  nodes.push(h("section", { class: "card" }, h("h2", null, "Open by status"),
-    open.length ? h("ul", { class: "history" }, open.map(s => h("li", null, h("strong", null, String(s.n)), "  " + s.name))) : h("p", { class: "muted" }, "No statuses.")));
-
-  nodes.push(h("section", { class: "card" }, h("h2", null, "My open tickets"),
+  grid.push(h("section", { class: "card dash-wide" }, h("h2", null, "My open tickets"),
     tickets.my_open.length ? ticketTable(tickets.my_open.map(t => ({ ...t, status_closed: 0, assignee_names: "" })))
       : h("p", { class: "muted" }, "Nothing assigned to you.")));
 
-  nodes.push(h("section", { class: "card" }, h("h2", null, "Recent ticket activity"),
+  const open = tickets.by_status.filter(s => !s.is_closed);
+  grid.push(h("section", { class: "card" }, h("h2", null, "Open by status"),
+    open.length ? h("ul", { class: "history" }, open.map(s => h("li", null, h("strong", null, String(s.n)), "  " + s.name))) : h("p", { class: "muted" }, "No statuses.")));
+
+  if (touch_bases) grid.push(touchBaseCard(touch_bases));
+
+  grid.push(h("section", { class: "card" }, h("h2", null, "Recent ticket activity"),
     tickets.recent.length ? h("ul", { class: "history" }, tickets.recent.map(e => h("li", null,
       h("span", { class: "muted" }, e.ts.replace("T", " ").replace("Z", "") + " · " + (e.user_name || "system") + " — "),
       h("a", { href: "#/tickets/" + encodeURIComponent(e.ticket_id) }, "#" + e.number), " " + describeHistory(e))))
       : h("p", { class: "muted" }, "No activity yet.")));
-  return nodes;
+  grid.push(...mgmt);
+  return [...nodes, h("div", { class: "dash-grid" }, ...grid)];
 }
 
 // ------------------------------------------------------------ activity (audit log)
@@ -586,6 +589,35 @@ function describeHistory(e) {
   }
 }
 
+// "Assign to…" popup: current staff on the ticket with a remove button, and a dropdown of technicians to add.
+async function assignDialog(t, onDone) {
+  let staff;
+  try { staff = (await api("GET", "/api/staff")).staff; } catch (e) { alert(e.message); return; }
+  let ids = t.assignees.map(a => a.id);
+  const nameOf = (id) => (staff.find(s => s.id === id) || t.assignees.find(a => a.id === id) || { name: "Unknown" }).name;
+  const list = h("div", { class: "assigned-list" });
+  const pick = h("select", { "aria-label": "Technician" });
+  const err = h("div", { class: "error", role: "alert" });
+  const save = async (next) => {
+    err.textContent = "";
+    try { await api("PUT", "/api/tickets/" + encodeURIComponent(t.id) + "/assignees", { user_ids: next }); ids = next; draw(); }
+    catch (e) { err.textContent = e.message; }
+  };
+  function draw() {
+    list.replaceChildren(...(ids.length ? ids.map(id => h("span", { class: "file-chip" }, nameOf(id) + " ",
+      h("button", { type: "button", "aria-label": "Remove " + nameOf(id), onclick: () => save(ids.filter(x => x !== id)) }, "×")))
+      : [h("span", { class: "muted" }, "Nobody assigned")]));
+    pick.replaceChildren(h("option", { value: "" }, "Choose a technician…"),
+      ...staff.filter(s => !ids.includes(s.id)).map(s => h("option", { value: s.id }, s.name + " (" + s.role_label + ")")));
+  }
+  draw();
+  const dlg = tbModal(h("h2", null, "Assign to"), h("p", { class: "muted small" }, "#" + t.number + " · " + t.title),
+    list, h("label", null, "Add a technician"), pick,
+    h("div", { class: "form-actions" }, h("button", { type: "button", class: "primary", onclick: () => { if (pick.value) save([...ids, pick.value]); } }, "Add"),
+      " ", h("button", { type: "button", autofocus: true, onclick: () => dlg.close() }, "Done")), err);
+  dlg.addEventListener("close", onDone);
+}
+
 async function ticketDetail(id) {
   const eid = encodeURIComponent(id);
   const [t, st] = await Promise.all([api("GET", "/api/tickets/" + eid), api("GET", "/api/statuses")]);
@@ -598,20 +630,30 @@ async function ticketDetail(id) {
   if (!st.statuses.some(s => s.id === t.status_id)) options.unshift(h("option", { value: t.status_id, selected: true, disabled: true }, t.status_name));
   const statusSel = h("select", { onchange: (e) => run(async () => maybeOfferTouchBase(await api("POST", "/api/tickets/" + eid + "/status", { status_id: e.target.value })))() }, options);
   if (!can("tickets.write")) statusSel.setAttribute("disabled", "");
-  nodes.push(h("section", { class: "card" },
+  const fact = (label, value, wide) => h("div", { class: "fact" + (wide ? " wide" : "") },
+    h("span", { class: "fact-label muted" }, label), h("div", { class: "fact-value" }, value));
+  const assignedRow = h("span", null, t.assignees.length ? t.assignees.map(a => a.name).join(", ") : "Nobody assigned",
+    can("tickets.assign") ? [" ", h("button", { type: "button", class: "mini", onclick: () => assignDialog(t, route) }, "Assign to…")] : null);
+  const head = h("section", { class: "card" },
     h("h2", null, "#" + t.number + " · " + t.title),
-    h("p", null, h("a", { href: "#/customers/" + encodeURIComponent(t.customer_id) }, t.customer_name),
-      t.customer_phone ? " · " + t.customer_phone : "", t.customer_email ? " · " + t.customer_email : ""),
-    field("Status", statusSel),
-    h("p", { class: "muted" }, "Priority " + t.priority + (t.due_date ? " · due " + t.due_date : "") +
-      (t.closed_at ? " · closed " + t.closed_at : "")),
-    t.symptoms ? h("p", null, h("strong", null, "Reported: "), t.symptoms) : null,
-    t.intake_notes ? h("p", { class: "note-body" }, h("strong", null, "Intake notes: "), t.intake_notes) : null,
-    msg));
+    h("div", { class: "ticket-facts" },
+      fact("Customer", h("span", null, h("a", { href: "#/customers/" + encodeURIComponent(t.customer_id) }, t.customer_name),
+        t.customer_phone ? " · " + t.customer_phone : "", t.customer_email ? " · " + t.customer_email : "")),
+      fact("Status", statusSel),
+      fact("Priority", t.priority),
+      fact("Due date", t.due_date || "Not set"),
+      fact("Assigned to", assignedRow),
+      fact(term("items", "Items"), t.equipment.length ? t.equipment.map(e => e.name + (e.serial_number ? " #" + e.serial_number : "")).join(", ") : "None"),
+      t.closed_at ? fact("Closed", t.closed_at.replace("T", " ").replace("Z", "")) : null,
+      fact("Customer-reported symptoms", t.symptoms || "None entered", true),
+      fact("Intake notes", t.intake_notes || "None entered", true)),
+    msg);
+  nodes.push(head);
   const tbNote = await touchBaseNote(t);               // "Customer touch base scheduled for ..." with reschedule / cancel
   if (tbNote) nodes.push(tbNote);
+  nodes.push(await ticketNotesCard(t));                // notes and attachments sit right under the details
 
-  // equipment + edit
+  // edit (lives inside the details card)
   if (can("tickets.write")) {
     const title = h("input", { value: t.title, required: true, maxlength: 150 });
     const priority = h("select", null, ["low", "normal", "high", "urgent"].map(p => h("option", { value: p, selected: p === t.priority }, p)));
@@ -627,7 +669,7 @@ async function ticketDetail(id) {
       equipBox.append(h("label", null, term("items", "Items") + " on this ticket"),
         ...equipment.map((e, i) => h("label", { class: "inline" }, checks[i].el, " " + e.name)));
     }
-    nodes.push(h("section", { class: "card" }, h("details", null, h("summary", null, "Edit ticket"),
+    head.append(h("details", { class: "ticket-edit" }, h("summary", null, "Edit ticket"),
       h("form", { onsubmit: (e) => { e.preventDefault(); run(() => {
           const body = { title: title.value, priority: priority.value, due_date: due.value, symptoms: symptoms.value, intake_notes: notes.value };
           if (can("equipment.read")) body.equipment_ids = checks.filter(c => c.el.checked).map(c => c.id);
@@ -635,26 +677,8 @@ async function ticketDetail(id) {
         })(); } },
         field("Title", title), field("Priority", priority), field("Due date", due),
         field("Customer-reported symptoms", symptoms), field("Intake notes", notes), equipBox,
-        h("div", { class: "form-actions" }, h("button", { class: "primary", type: "submit" }, "Save changes"))))));
+        h("div", { class: "form-actions" }, h("button", { class: "primary", type: "submit" }, "Save changes")))));
   }
-  if (!can("tickets.write") || !can("equipment.read")) {
-    if (t.equipment.length) nodes.push(h("section", { class: "card" }, h("h2", null, term("items", "Items")),
-      t.equipment.map(e => h("div", { class: "item" }, e.name + (e.serial_number ? " #" + e.serial_number : "")))));
-  }
-
-  // assignees
-  const assignCard = h("section", { class: "card" }, h("h2", null, "Assigned technicians"));
-  if (can("tickets.assign")) {
-    const { staff } = await api("GET", "/api/staff");
-    const have = new Set(t.assignees.map(a => a.id));
-    const boxes = staff.map(s => ({ id: s.id, el: h("input", { type: "checkbox", checked: have.has(s.id) }) }));
-    assignCard.append(...staff.map((s, i) => h("label", { class: "inline" }, boxes[i].el, " " + s.name + " (" + s.role_label + ")")),
-      h("div", { class: "form-actions" }, h("button", { onclick: run(() =>
-        api("PUT", "/api/tickets/" + eid + "/assignees", { user_ids: boxes.filter(b => b.el.checked).map(b => b.id) })) }, "Save assignment")));
-  } else {
-    assignCard.append(h("p", null, t.assignees.length ? t.assignees.map(a => a.name).join(", ") : "Nobody assigned"));
-  }
-  nodes.push(assignCard);
 
   // time tracking
   if (can("tickets.read")) nodes.push(await ticketTimeCard(t));
@@ -669,9 +693,6 @@ async function ticketDetail(id) {
         " · " + i.status + " · " + money(i.total_cents)))) : h("p", { class: "muted" }, "No invoices yet."),
       can("invoices.write") ? h("a", { class: "btn", href: "#/invoices/new?ticket=" + eid }, "+ Create invoice for this ticket") : null));
   }
-
-  // notes and attachments
-  nodes.push(await ticketNotesCard(t));
 
   // history
   nodes.push(h("section", { class: "card" }, h("h2", null, "History"),

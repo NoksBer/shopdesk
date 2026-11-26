@@ -16,6 +16,8 @@ Version 6 adds: **self-service shop sign-up**, a **cash ledger** and **time trac
 
 **Customer touch bases (v0.0.12):** when a ticket is moved to Completed / Closed (not Cancelled), an optional "Customer Touch Base" popup offers to schedule a follow-up in 30/60/90 days, 6 months, 1 year or on a chosen date (MM/DD/YYYY). Skip is the default and never blocks closing. Scheduled touch bases show on the Calendar (purple), on the dashboard ("Upcoming touch bases") and on the original ticket, where they can be rescheduled or cancelled. On the due date a background job inside the app (it runs at startup and about every hour, and catches up after downtime) creates one low-priority "Touch base: <customer> (follow-up to #<number>)" ticket in the first status, assigned to the original ticket's staff if any, and writes an audit entry. Dates use the server's UTC date. Customers that were archived in the meantime are skipped (the touch base is cancelled and audited); suspended shops are skipped until reactivated.
 
+**Ticket page, calendar and dashboard clean-up (v0.0.13):** the ticket details box now shows customer, status, priority, due date, assignees, items, reported symptoms and intake notes as plain text, with "Edit ticket" inside the same box; Notes & attachments come right under it; "Assign to…" opens a popup with a technician dropdown. The Calendar has "+ Add calendar item" for manual reminders and appointments (amber). The dashboard uses the full screen width as a card grid, with the technician's own tickets first.
+
 ## Layout (same as Plateful)
 
 ```

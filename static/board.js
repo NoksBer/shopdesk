@@ -145,7 +145,7 @@ async function calendarView() {
   const grid = h("div", { class: "cal-grid" });
   const agenda = h("div", { class: "cal-agenda" });
   const errBox = h("div", { class: "error", role: "alert" });
-  let byDay = {}, tbByDay = {};
+  let byDay = {}, tbByDay = {}, itemsByDay = {};
 
   async function load() {
     const first = new Date(calState.y, calState.m, 1);
@@ -153,8 +153,10 @@ async function calendarView() {
     const days = [];
     for (let i = 0; i < 42; i++) days.push(new Date(start.getFullYear(), start.getMonth(), start.getDate() + i));
     const range = "from=" + ymd(days[0]) + "&to=" + ymd(days[41]);
-    const [r, tbr] = await Promise.all([api("GET", "/api/calendar?" + range), api("GET", "/api/touch-bases?" + range)]);
-    byDay = {}; tbByDay = {};
+    const [r, tbr, itr] = await Promise.all([api("GET", "/api/calendar?" + range), api("GET", "/api/touch-bases?" + range),
+      api("GET", "/api/calendar-items?" + range)]);
+    byDay = {}; tbByDay = {}; itemsByDay = {};
+    for (const it of itr.items) (itemsByDay[it.item_date] = itemsByDay[it.item_date] || []).push(it);
     for (const t of r.tickets) (byDay[t.due_date] = byDay[t.due_date] || []).push(t);
     for (const b of tbr.touch_bases) (tbByDay[b.due_date] = tbByDay[b.due_date] || []).push(b);
     title.textContent = MONTHS[calState.m] + " " + calState.y;
@@ -162,7 +164,7 @@ async function calendarView() {
     grid.replaceChildren(
       ...["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map(d => h("div", { class: "cal-head" }, d)),
       ...days.map(d => {
-        const key = ymd(d), list = byDay[key] || [], tbs = tbByDay[key] || [];
+        const key = ymd(d), list = byDay[key] || [], tbs = tbByDay[key] || [], its = itemsByDay[key] || [];
         const open = list.filter(t => !t.status_closed).length;
         return h("div", { class: "cal-day" + (d.getMonth() !== calState.m ? " other" : "") + (key === todayStr ? " today" : "") +
             (key === calState.selected ? " selected" : ""), role: "button", tabindex: "0", "aria-label": key + ", " + list.length + " due",
@@ -175,15 +177,19 @@ async function calendarView() {
           list.length > 3 ? h("div", { class: "cal-more" }, "+" + (list.length - 3) + " more") : null,
           tbs.slice(0, 2).map(b => h("button", { type: "button", class: "cal-chip tb", title: "Touch base: " + b.customer_name + " (from #" + b.ticket_number + ")",
             onclick: (e) => { e.stopPropagation(); touchBaseDetail(b, () => load().catch(showError(errBox))); } }, "↻ Touch base: " + b.customer_name)),
-          list.length + tbs.length ? h("div", { class: "cal-count" + (open && key < todayStr ? " late" : "") }, String(list.length + tbs.length)) : null);
+          its.slice(0, 2).map(it => h("button", { type: "button", class: "cal-chip item", title: it.title + (it.item_time ? " at " + calTimeText(it.item_time) : ""),
+            onclick: (e) => { e.stopPropagation(); calendarItemDetail(it, () => load().catch(showError(errBox))); } }, "▪ " + (it.item_time ? calTimeText(it.item_time) + " " : "") + it.title)),
+          list.length + tbs.length + its.length ? h("div", { class: "cal-count" + (open && key < todayStr ? " late" : "") }, String(list.length + tbs.length + its.length)) : null);
       }));
     drawSelection();
   }
 
   function drawSelection() {
     for (const el of grid.querySelectorAll(".cal-day")) el.classList.toggle("selected", el.getAttribute("aria-label").startsWith(calState.selected));
-    const list = byDay[calState.selected] || [], tbs = tbByDay[calState.selected] || [];
+    const list = byDay[calState.selected] || [], tbs = tbByDay[calState.selected] || [], its = itemsByDay[calState.selected] || [];
     agenda.replaceChildren(...[h("h3", null, calState.selected + (calState.selected === localToday() ? " (today)" : "")),
+      ...its.map(it => h("p", { class: "tb-agenda" }, h("span", { class: "badge item-badge" }, it.item_time ? calTimeText(it.item_time) : "All day"), " " + it.title + " ",
+        h("button", { type: "button", class: "mini", onclick: () => calendarItemDetail(it, () => load().catch(showError(errBox))) }, "Open"))),
       ...tbs.map(b => h("p", { class: "tb-agenda" },h("span", { class: "badge tb-badge" }, "Touch base"), " " + b.customer_name + " · follow-up to #" + b.ticket_number + " ",
         h("button", { type: "button", class: "mini", onclick: () => touchBaseDetail(b, () => load().catch(showError(errBox))) }, "Open"))),
       list.length ? h("div", { class: "table-wrap" }, h("table", null,
@@ -191,7 +197,7 @@ async function calendarView() {
         h("tbody", null, list.map(t => h("tr", null,
           h("td", null, h("a", { href: "#/tickets/" + enc(t.id) }, t.number)), h("td", null, t.title), h("td", null, t.customer_name),
           h("td", null, t.status_name), h("td", { class: "prio-" + t.priority }, t.priority))))))
-        : (tbs.length ? null : h("p", { class: "muted" }, "No jobs due this day."))].filter(Boolean));
+        : (tbs.length || its.length ? null : h("p", { class: "muted" }, "No jobs due this day."))].filter(Boolean));
   }
 
   const go = (delta) => { const d = new Date(calState.y, calState.m + delta, 1); calState.y = d.getFullYear(); calState.m = d.getMonth(); load().catch(showError(errBox)); };
@@ -199,7 +205,9 @@ async function calendarView() {
     h("button", { type: "button", onclick: () => go(-1), "aria-label": "Previous month" }, "‹"),
     title,
     h("button", { type: "button", onclick: () => go(1), "aria-label": "Next month" }, "›"),
-    h("button", { type: "button", onclick: () => { const n = new Date(); calState = { y: n.getFullYear(), m: n.getMonth(), selected: localToday() }; load().catch(showError(errBox)); } }, "Today"));
+    h("button", { type: "button", onclick: () => { const n = new Date(); calState = { y: n.getFullYear(), m: n.getMonth(), selected: localToday() }; load().catch(showError(errBox)); } }, "Today"),
+    can("tickets.write") ? h("button", { type: "button", class: "primary cal-add",
+      onclick: () => calendarItemDialog({ date: calState.selected, onSaved: () => load().catch(showError(errBox)) }) }, "+ Add calendar item") : null);
   await load();
-  return [h("section", { class: "card" }, bar, errBox, h("p", { class: "muted small" }, "Job due dates. Red means overdue and still open. Purple items are customer touch bases."), grid), h("section", { class: "card" }, agenda)];
+  return [h("section", { class: "card" }, bar, errBox, h("p", { class: "muted small" }, "Job due dates. Red means overdue and still open. Purple items are customer touch bases; amber items are calendar items added by hand."), grid), h("section", { class: "card" }, agenda)];
 }

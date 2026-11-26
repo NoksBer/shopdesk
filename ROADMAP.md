@@ -57,6 +57,8 @@ Legend: [x] implemented AND tested (tests run and passing), [~] written, NOT yet
       Installer: `install-updater` mode for existing containers. See RELEASING.md. Never run on a real container.
 - [~] v0.0.12. Customer touch bases (migration 0010): optional popup on completing a ticket, calendar + dashboard + ticket note,
       reschedule/cancel, hourly in-app job that creates the follow-up ticket (idempotent, catches up). Dashboard "Money out" tile red.
+- [~] v0.0.13. Ticket page tidy-up (details + edit in one box, notes first, Assign-to popup), manual calendar items
+      (migration 0011, `/api/calendar-items`), full-width dashboard grid.
 - [ ] 10. Tenant-isolation tests for every new route (existing suite covers steps 1-4 routes)
 - [~] 11. Installer (`install/shopdesk.sh`): written, never run on Proxmox
 - [ ] 12. Restore test on a clean container

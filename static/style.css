@@ -326,3 +326,21 @@ dialog.modal h2 { margin: 0 0 .4rem; font-size: 1.1rem; }
 .tb-agenda { margin: .4rem 0; }
 .tb-date { color: var(--touch); font-weight: 600; }
 .card.tb-note { border-color: var(--touch); }
+
+/* v0.0.13 ticket details, calendar items, wide dashboard */
+:root { --item: #f2c14e; }
+.ticket-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: .7rem 1.5rem; margin-bottom: .5rem; }
+.fact-label { display: block; font-size: .8rem; text-transform: uppercase; letter-spacing: .03em; }
+.fact-value { word-break: break-word; }
+.fact.wide { grid-column: 1 / -1; }
+.fact.wide .fact-value { white-space: pre-wrap; }
+details.ticket-edit { margin-top: .8rem; padding-top: .6rem; border-top: 1px solid var(--line); }
+details.ticket-edit summary { cursor: pointer; font-weight: 600; }
+.assigned-list { margin: .4rem 0 .8rem; }
+.cal-chip.item { width: 100%; text-align: left; font: inherit; font-size: .72rem; cursor: pointer; color: var(--item); border: 0; border-left: 3px solid var(--item); background: rgba(242, 193, 78, .14); }
+.badge.item-badge { color: var(--item); border-color: var(--item); }
+.cal-add { margin-left: auto; }
+.dash-title { margin: .2rem 0 .7rem; font-size: 1.2rem; }
+.dash-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(420px, 100%), 1fr)); gap: 1rem; align-items: start; max-width: 2200px; }
+.dash-grid > .card { margin-bottom: 0; min-width: 0; }
+.dash-grid > .card.dash-wide { grid-column: 1 / -1; }
