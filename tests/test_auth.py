@@ -85,7 +85,7 @@ class AuthFlow(unittest.TestCase):
         r = Client(self.ts).get("/api/bootstrap")
         self.assertIn("default-src 'self'", r.headers["Content-Security-Policy"])
         self.assertEqual(r.headers["X-Content-Type-Options"], "nosniff")
-        self.assertEqual(r.headers["Cache-Control"], "no-store")
+        self.assertEqual(r.headers["Cache-Control"], "no-cache")
 
     def test_session_idle_expiry(self):
         c = Client(self.ts)

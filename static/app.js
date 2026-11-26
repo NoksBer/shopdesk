@@ -83,7 +83,8 @@ function authScreen(boot) {
           h("button", { type: "button", class: mode === "login" ? "active" : "", onclick: () => { mode = "login"; draw(); } }, "Sign in"),
           h("button", { type: "button", class: mode === "register" ? "active" : "", onclick: () => { mode = "register"; draw(); } }, "Create your shop"))
       : null;
-    render(h("div", { class: "auth" }, h("h1", null, boot.app),
+    render(h("div", { class: "auth" },
+      h("div", { class: "brand-lockup" }, h("img", { src: "/logo.svg", alt: "" }), h("h1", null, "ShopDesk")),
       h("p", { class: "muted" }, mode === "register"
         ? "Set up your own shop in a minute. Your business gets its own private database, separate from every other shop, and you become its owner."
         : "Sign in to your shop. New here? Choose “Create your shop”."), tabs,

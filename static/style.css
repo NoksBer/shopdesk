@@ -278,3 +278,11 @@ td.amt { font-variant-numeric: tabular-nums; white-space: nowrap; }
 /* v6.1 software updates (admin page) */
 .release-notes { white-space: pre-wrap; word-break: break-word; max-height: 260px; overflow: auto; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: .6rem .8rem; font: inherit; font-size: .9rem; }
 
+
+/* v0.0.9 sign-in logo and new-version banner */
+.brand-lockup { display: flex; align-items: center; gap: .75rem; margin-bottom: .5rem; }
+.brand-lockup h1 { margin: 0; }
+.brand-lockup img { width: 3rem; height: 3rem; flex: none; }
+.update-banner { position: fixed; left: 50%; bottom: 1rem; transform: translateX(-50%); z-index: 50; display: flex; align-items: center; gap: .5rem; max-width: calc(100vw - 2rem); padding: .6rem .8rem; background: var(--panel); border: 1px solid var(--accent); border-radius: 10px; box-shadow: 0 4px 18px rgba(0, 0, 0, .35); }
+@media print { .update-banner { display: none; } }
+

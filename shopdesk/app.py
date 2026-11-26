@@ -1,16 +1,22 @@
 """Application core: request dispatch, authentication, CSRF, authorization, tenant scoping."""
+import hashlib
 import hmac
 import json
+import re
 import sys
 import traceback
-from urllib.parse import urlsplit
+from urllib.parse import quote, urlsplit
 
-from . import APP_NAME, auth
+from . import APP_NAME, __version__, auth
 from .config import Config
 from .db import connect, migrate
 from .http_util import Request, Response, Router
 from .tenants import TENANT_ID_RE, cleanup_stale_provisioning, open_tenant_db
 from .util import ApiError
+
+# Local script/style/icon references in HTML get "?v=<VERSION>" appended (cache busting; no build step).
+ASSET_RE = re.compile(rb'((?:src|href)=")(/[^"?#]+\.(?:js|css|svg))(")')
+ASSET_VERSION = quote(__version__, safe="").encode("ascii")
 
 COOKIE_TENANT = "sd_session"
 COOKIE_PLATFORM = "sd_platform"
@@ -151,7 +157,7 @@ class App:
             resp.headers.append(("Strict-Transport-Security", "max-age=31536000"))
         has_cache_header = any(k.lower() == "cache-control" for k, _ in resp.headers)
         if (req.path.startswith("/api/") or req.path == "/healthz") and not has_cache_header:
-            resp.headers.append(("Cache-Control", "no-store"))
+            resp.headers.append(("Cache-Control", "no-cache"))
 
     def _dispatch(self, req):
         if req.method in ("GET", "HEAD") and not req.path.startswith("/api/") and req.path != "/healthz":
@@ -258,9 +264,20 @@ class App:
         except (ValueError, OSError):
             raise ApiError(404, "Not found")
         ctype = CONTENT_TYPES.get(target.suffix.lower(), "application/octet-stream")
-        resp = Response(200, data, ctype)
-        resp.headers.append(("Cache-Control", "no-cache"))
-        return resp
+        if target.suffix.lower() == ".html":
+            # HTML always revalidates, and its script/style/icon URLs carry ?v=<VERSION> so a new release is picked up.
+            resp = Response(200, ASSET_RE.sub(rb"\1\2?v=" + ASSET_VERSION + rb"\3", data), ctype)
+            resp.headers.append(("Cache-Control", "no-cache"))
+            return resp
+        etag = '"%s"' % hashlib.sha256(data).hexdigest()[:32]
+        # Only a URL carrying the CURRENT version may be cached for a long time; anything else revalidates via ETag.
+        versioned = req.query.get("v") == [__version__]
+        headers = [("ETag", etag),
+                   ("Cache-Control", "public, max-age=31536000, immutable" if versioned else "no-cache")]
+        sent = [t.strip() for t in (req.headers.get("If-None-Match") or "").split(",")]
+        if etag in sent or "*" in sent:
+            return Response(304, b"", ctype, headers)
+        return Response(200, data, ctype, headers)
 
 
 def main(argv):

@@ -106,3 +106,32 @@ function refreshBrandHeader() {
 }
 
 function badge(text, cls) { return h("span", { class: "badge " + (cls || "") }, text); }
+
+// ------------------------------------------------------------ "new version available" banner
+// The version this page was loaded with is the ?v= on this script's own URL (set by the server from VERSION), so a
+// release published between page load and the first check is still noticed. Falls back to the first /api/version.
+let LOADED_VERSION = (() => {
+  try { return new URL(document.currentScript.src).searchParams.get("v") || null; } catch (e) { return null; }
+})();
+let versionBanner = null, versionDismissed = null;
+
+async function checkVersion() {
+  try {
+    const res = await fetch("/api/version", { cache: "no-store" });
+    if (!res.ok) return;
+    const v = (await res.json()).version;
+    if (!v) return;
+    if (!LOADED_VERSION) { LOADED_VERSION = v; return; }
+    if (v !== LOADED_VERSION && v !== versionDismissed && !versionBanner) showVersionBanner(v);
+  } catch (e) { /* offline or restarting: try again later */ }
+}
+function showVersionBanner(v) {
+  versionBanner = h("div", { class: "update-banner", role: "status" },
+    h("span", null, "A new version of ShopDesk is available."), " ",
+    h("button", { class: "primary", type: "button", onclick: () => location.reload() }, "Reload"), " ",
+    h("button", { type: "button", "aria-label": "Dismiss", onclick: () => { versionDismissed = v; versionBanner.remove(); versionBanner = null; } }, "×"));
+  document.body.append(versionBanner);
+}
+checkVersion();
+setInterval(checkVersion, 5 * 60 * 1000);
+document.addEventListener("visibilitychange", () => { if (!document.hidden) checkVersion(); });
