@@ -86,6 +86,45 @@ PROFILES = {
         "intake_checklist": ["Photos taken", "Accessories noted"],
         "service_templates": ["Diagnostic fee", "Standard labor"],
     },
+    # Optional profile keys (only this type uses them; every other profile behaves exactly as before):
+    #   "statuses"         starter ticket statuses (name, customer label, is_closed); default is DEFAULT_STATUSES
+    #   "starter_services" names added to the services catalogue ONCE at shop creation, at price 0.00
+    #   "touch_base_presets" quick buttons in the Customer Touch Base popup: label, days or months, prefilled note
+    # A name containing "cancel" never offers a touch base; a closed status without it (Completed / Closed) does.
+    "auto_tint": {
+        "label": "Auto tinting / window film",
+        "terminology": {"item": "Vehicle", "items": "Vehicles"},
+        "equipment_fields": [
+            _f("year", "Year", "number"), _f("make", "Make"), _f("model", "Model"), _f("color", "Color"),
+            _f("license_plate", "License plate"), _f("vin", "VIN (optional)"),
+            # The vehicle record is the only place with custom fields; these describe the most recent tint job.
+            _f("film_brand", "Film brand (latest job)"), _f("film_type", "Film type (latest job)"),
+            _f("shade_percent", "Shade percentage (latest job)", "number"), _f("warranty_term", "Warranty term (latest job)"),
+        ],
+        "intake_checklist": [],
+        "service_templates": ["Full vehicle tint", "Front two windows", "Rear windows", "Windshield strip",
+                              "Full windshield", "Sunroof", "Old tint removal"],
+        "starter_services": ["Full vehicle tint", "Front two windows", "Rear windows", "Windshield strip",
+                             "Full windshield", "Sunroof", "Old tint removal"],
+        "statuses": [
+            ("Quote Requested", "Quote requested", 0),
+            ("Scheduled", "Appointment scheduled", 0),
+            ("Checked In", "Vehicle checked in", 0),
+            ("In Progress", "Tinting in progress", 0),
+            ("Quality Check", "Quality check", 0),
+            ("Ready for Pickup", "Ready for pickup", 0),
+            ("Completed / Closed", "Completed", 1),
+            ("Cancelled / No-show", "Cancelled", 1),
+        ],
+        "touch_base_presets": [
+            {"label": "1 week check-in", "days": 7,
+             "note": "1 week check-in: confirm the film has cured, with no bubbles, peeling or lifting edges, and the customer is happy."},
+            {"label": "6 month check-in", "months": 6,
+             "note": "6 month check-in: ask how the tint is holding up and whether they need anything."},
+            {"label": "1 year check-in", "months": 12,
+             "note": "1 year check-in: ask how the tint is holding up and remind them of their warranty."},
+        ],
+    },
     "custom": {
         "label": "Other / custom",
         "terminology": {"item": "Item", "items": "Items"},

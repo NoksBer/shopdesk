@@ -49,6 +49,12 @@ function touchBaseDialog({ ticket, existing = null, onSaved = null }) {
   const quick = (label, make) => h("button", { type: "button", class: "mini", onclick: () => setDate(make()) }, label);
   const plus = (n) => () => new Date(today.getFullYear(), today.getMonth(), today.getDate() + n);
   if (existing) setDate(tbFromIso(existing.due_date));
+  // Per-shop-type presets (e.g. window tinting): set the date and prefill the note. Shops without presets see none.
+  let lastPreset = "";
+  const presetButtons = ((ME && ME.touch_base_presets) || []).map((p) => h("button", { type: "button", class: "mini", onclick: () => {
+    setDate(p.months ? tbAddMonths(today, p.months) : plus(p.days || 0)());
+    if (!notes.value.trim() || notes.value === lastPreset) { notes.value = p.note || ""; lastPreset = notes.value; }
+  } }, p.label));
 
   const dlg = tbModal(
     h("h2", null, existing ? "Reschedule touch base" : "Customer Touch Base"),
@@ -58,6 +64,7 @@ function touchBaseDialog({ ticket, existing = null, onSaved = null }) {
     h("div", { class: "tb-row" }, h("label", null, "Create calendar item for"), date),
     h("div", { class: "tb-quick" }, quick("30 days", plus(30)), quick("60 days", plus(60)), quick("90 days", plus(90)),
       quick("6 months", () => tbAddMonths(today, 6)), quick("1 year", () => tbAddMonths(today, 12))),
+    presetButtons.length ? h("div", { class: "tb-quick" }, presetButtons) : null,
     h("label", null, "Touch base on"), notes, err,
     h("div", { class: "form-actions" }, skip, " ", save));
 

@@ -144,7 +144,9 @@ def me(ctx):
     db = ctx.db
     biz = db.execute("SELECT name, shop_type FROM business_profile WHERE id=1").fetchone()
     terminology = db.execute("SELECT value FROM settings WHERE key='terminology'").fetchone()
+    presets = db.execute("SELECT value FROM settings WHERE key='touch_base_presets'").fetchone()
     return {
+        "touch_base_presets": json.loads(presets["value"]) if presets else [],
         "user": {"id": ctx.user.id, "email": ctx.user.email, "name": ctx.user.name,
                  "role": ctx.user.role, "role_label": ctx.user.role_label,
                  "must_change_password": ctx.user.must_change_password},

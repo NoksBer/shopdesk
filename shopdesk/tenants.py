@@ -70,6 +70,14 @@ def _seed(conn, tenant_id, business, shop_type, owner_name, owner_email, pw_hash
                 (new_id(), name, i, closed, customer_label))
         for key in ("terminology", "equipment_fields", "intake_checklist", "service_templates"):
             conn.execute("INSERT INTO settings(key, value) VALUES(?,?)", (key, json.dumps(profile[key])))
+        # Optional starter data. Runs only here, inside the same transaction that creates the shop's database content,
+        # so it happens exactly once and only for a brand-new shop (existing shops are never touched). Prices start at 0.00.
+        for service in profile.get("starter_services", []):
+            conn.execute("INSERT INTO services(id, name, description, price_cents, taxable, created_at, updated_at) "
+                         "VALUES(?,?,?,?,?,?,?)", (new_id(), service, "", 0, 1, ts, ts))
+        if profile.get("touch_base_presets"):
+            conn.execute("INSERT INTO settings(key, value) VALUES(?,?)",
+                         ("touch_base_presets", json.dumps(profile["touch_base_presets"])))
         audit(conn, owner_id, "tenant.created", "tenant", tenant_id, {"shop_type": shop_type}, ip)
     return owner_id
 
