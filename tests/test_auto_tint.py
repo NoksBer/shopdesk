@@ -58,7 +58,7 @@ class AutoTint(unittest.TestCase):
         self.assertEqual([f["key"] for f in r["fields"]], FIELDS)
         labels = {f["key"]: f["label"] for f in r["fields"]}
         self.assertEqual((labels["year"], labels["license_plate"], labels["vin"]), ("Year", "License plate", "VIN (optional)"))
-        self.assertEqual(r["terminology"], {"item": "Vehicle", "items": "Vehicles"})
+        self.assertEqual((r["terminology"]["item"], r["terminology"]["items"]), ("Vehicle", "Vehicles"))
         self.assertEqual(self.tint.get("/api/me").json["terminology"]["item"], "Vehicle")
 
     def test_vehicle_record_can_be_saved_with_and_without_vin(self):

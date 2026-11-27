@@ -37,6 +37,7 @@ WHERE """ + _RESTRICT + """
 _LIST_HEAD = ("""
 SELECT t.id, t.number, t.title, t.priority, t.due_date, t.customer_id, c.name AS customer_name,
        t.status_id, s.name AS status_name, s.is_closed AS status_closed, t.created_at, t.updated_at, t.closed_at,
+       t.due_time, t.job_location,
        (SELECT group_concat(u.name, ', ') FROM ticket_assignees a JOIN users u ON u.id = a.user_id
         WHERE a.ticket_id = t.id) AS assignee_names,
        (SELECT group_concat(e.name, ', ') FROM ticket_equipment te JOIN equipment e ON e.id = te.equipment_id
@@ -93,7 +94,7 @@ ONE_SQL = ("""
 SELECT t.id, t.number, t.title, t.priority, t.due_date, t.symptoms, t.intake_notes, t.customer_id,
        c.name AS customer_name, c.phone AS customer_phone, c.email AS customer_email,
        t.status_id, s.name AS status_name, s.is_closed AS status_closed, t.created_by, t.created_at, t.updated_at,
-       t.closed_at, t.closed_by
+       t.closed_at, t.closed_by, t.due_time, t.job_location
 """ + _FROM + "WHERE t.id = :id AND " + _RESTRICT)
 
 
@@ -170,10 +171,18 @@ def _parse(body):
     priority = clean_text(body, "priority", max_len=10, default="normal") or "normal"
     if priority not in PRIORITIES:
         raise ApiError(400, "priority must be one of: " + ", ".join(PRIORITIES))
+    due_date = clean_date(body, "due_date")
+    due_time = clean_text(body, "due_time", max_len=5)
+    if due_time and not re.match(r"^([01]\d|2[0-3]):[0-5]\d$", due_time):
+        raise ApiError(400, "due_time must be a time (HH:MM)")
+    if due_time and not due_date:
+        raise ApiError(400, "Set a date to add a time")
     return {
         "title": clean_text(body, "title", max_len=150, required=True),
         "priority": priority,
-        "due_date": clean_date(body, "due_date"),
+        "due_date": due_date,
+        "due_time": due_time,
+        "job_location": clean_text(body, "job_location", max_len=200),
         "symptoms": clean_text(body, "symptoms", max_len=2000),
         "intake_notes": clean_text(body, "intake_notes", max_len=2000),
     }
@@ -354,9 +363,9 @@ def create_ticket(ctx):
         number = _allocate_number(db)
         db.execute(
             "INSERT INTO tickets(id, number, customer_id, status_id, title, priority, due_date, symptoms, intake_notes, "
-            "created_by, created_at, updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+            "created_by, created_at, updated_at, due_time, job_location) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (tid, number, customer_id, status["id"], data["title"], data["priority"], data["due_date"],
-             data["symptoms"], data["intake_notes"], ctx.user.id, ts, ts))
+             data["symptoms"], data["intake_notes"], ctx.user.id, ts, ts, data["due_time"], data["job_location"]))
         for eid in equipment_ids:
             db.execute("INSERT INTO ticket_equipment(ticket_id, equipment_id) VALUES(?,?)", (tid, eid))
         for u in users:
@@ -383,11 +392,12 @@ def update_ticket(ctx):
     wanted = _id_list(body["equipment_ids"], "equipment_ids", 20) if "equipment_ids" in body else current
     _equipment_for_customer(db, wanted, old["customer_id"], already=current)
     ts = now_iso()
-    changed = [k for k in ("title", "symptoms", "intake_notes") if old[k] != data[k]]
+    changed = [k for k in ("title", "symptoms", "intake_notes", "job_location", "due_time") if old[k] != data[k]]
     with tx(db):
-        db.execute("UPDATE tickets SET title=?, priority=?, due_date=?, symptoms=?, intake_notes=?, updated_at=? "
-                   "WHERE id=?", (data["title"], data["priority"], data["due_date"], data["symptoms"],
-                                  data["intake_notes"], ts, old["id"]))
+        db.execute("UPDATE tickets SET title=?, priority=?, due_date=?, symptoms=?, intake_notes=?, updated_at=?, "
+                   "due_time=?, job_location=? WHERE id=?",
+                   (data["title"], data["priority"], data["due_date"], data["symptoms"],
+                    data["intake_notes"], ts, data["due_time"], data["job_location"], old["id"]))
         if old["priority"] != data["priority"]:
             _history(db, old["id"], ctx.user.id, "priority", {"from": old["priority"], "to": data["priority"]})
         if old["due_date"] != data["due_date"]:

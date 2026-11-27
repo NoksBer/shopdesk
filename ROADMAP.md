@@ -62,6 +62,7 @@ Legend: [x] implemented AND tested (tests run and passing), [~] written, NOT yet
 - [~] v0.1.0. Platform admin Shops console (platform migration 0002; tenant 0012 temporary passwords), CSV data import (tenant 0013, permission `data.import`),
       full-width Tickets table with side panel, tickets status-filter fix, invoice-to-ticket link, customer history with invoices.
 - [~] v0.1.1. Shop type 'Auto tinting / window film' as profile data (vehicle fields, statuses, starter services at 0.00, touch base presets), seeded once at shop creation.
+- [~] v0.1.2. Auto tinting profile: Job wording, job location, due time, vehicle examples, phone layout (tenant migration 0014).
 - [ ] 10. Tenant-isolation tests for every new route (existing suite covers steps 1-4 routes)
 - [~] 11. Installer (`install/shopdesk.sh`): written, never run on Proxmox
 - [ ] 12. Restore test on a clean container

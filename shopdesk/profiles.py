@@ -89,11 +89,26 @@ PROFILES = {
     # Optional profile keys (only this type uses them; every other profile behaves exactly as before):
     #   "statuses"         starter ticket statuses (name, customer label, is_closed); default is DEFAULT_STATUSES
     #   "starter_services" names added to the services catalogue ONCE at shop creation, at price 0.00
+    #   "ticket_options"   extra job form fields (location_label, due_time) and "mobile" layout; stored as a setting
     #   "touch_base_presets" quick buttons in the Customer Touch Base popup: label, days or months, prefilled note
     # A name containing "cancel" never offers a touch base; a closed status without it (Completed / Closed) does.
     "auto_tint": {
         "label": "Auto tinting / window film",
-        "terminology": {"item": "Vehicle", "items": "Vehicles"},
+        # "ticket"/"tickets" rename every visible "ticket" to "job"; the "eg_*" keys replace the "e.g." example texts.
+        "terminology": {
+            "item": "Vehicle", "items": "Vehicles", "ticket": "Job", "tickets": "Jobs",
+            "eg_vehicle_name": "Name (e.g. 2019 Honda Civic)",
+            "eg_job_title": "e.g. Ceramic tint on a 2019 Honda Civic",
+            "eg_prefix": "Prefix (optional, e.g. TINT-)",
+            "eg_service_name": "e.g. Ceramic tint, front two windows",
+            "eg_stock_reason": "e.g. Film roll received from supplier, damaged, count correction",
+            "eg_tagline": "e.g. Fast, friendly window tinting since 2009",
+            "eg_calendar_item": "e.g. Tint appointment for a 2019 Honda Civic",
+            "eg_ledger": "e.g. Film roll purchase",
+            "eg_touch_notes": "What to check on, e.g. is the tint still holding up on the rear window?",
+        },
+        # Extra job form fields and the phone-friendly layout, for this type only.
+        "ticket_options": {"location_label": "Where will job take place", "due_time": True, "mobile": True},
         "equipment_fields": [
             _f("year", "Year", "number"), _f("make", "Make"), _f("model", "Model"), _f("color", "Color"),
             _f("license_plate", "License plate"), _f("vin", "VIN (optional)"),

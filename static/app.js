@@ -128,6 +128,7 @@ function versionFooter() {              // small muted "ShopDesk v0.0.10" line a
 async function dashboard(me) {
   ME = me;
   BIZ = null;
+  document.body.classList.toggle("mobile-first", !!(me.ticket_options && me.ticket_options.mobile));   // phone-friendly layout (auto tinting)
   try { setBrand(await api("GET", "/api/branding")); } catch (e) { setBrand(null); }
   document.title = me.business.name;
   const nav = h("nav", { class: "nav", id: "nav" });
@@ -171,7 +172,7 @@ function drawNav(active) {
   };
   const only = (perm, entry) => (can(perm) ? [entry] : []);
   const items = [link(["#/dashboard", "Dashboard"])];
-  if (can("tickets.read")) items.push(link(["#/board", "Queue"]), link(["#/tickets", "Tickets"]), link(["#/calendar", "Calendar"]));
+  if (can("tickets.read")) items.push(link(["#/board", "Queue"]), link(["#/tickets", jw("Tickets")]), link(["#/calendar", "Calendar"]));
   items.push(group("Records", [...only("customers.read", ["#/customers", "Customers"]), ...only("inventory.read", ["#/inventory", "Inventory"]),
     ...only("services.read", ["#/services", "Services"]), ...only("time.write", ["#/time", "Time"])]));
   items.push(group("Billing", [...only("invoices.read", ["#/invoices", "Invoices"]), ...only("ledger.read", ["#/ledger", "Ledger"])]));
@@ -301,7 +302,7 @@ async function customerDetail(id) {
   }
   if (!customer.archived_at) {
     const links = [];
-    if (can("tickets.write")) links.push(h("a", { class: "btn", href: "#/tickets/new?customer=" + encodeURIComponent(id) }, "+ New ticket"));
+    if (can("tickets.write")) links.push(h("a", { class: "btn", href: "#/tickets/new?customer=" + encodeURIComponent(id) }, jw("+ New ticket")));
     if (can("invoices.write")) links.push(h("a", { class: "btn", href: "#/invoices/new?customer=" + encodeURIComponent(id) }, "+ New invoice"));
     if (links.length) head.push(h("div", { class: "form-actions" }, links));
   }
@@ -320,8 +321,8 @@ async function customerDetail(id) {
       more = inv.total > inv.invoices.length;
     }
     nodes.push(h("section", { class: "card" }, h("h2", null, "Repair history"),
-      tickets.length ? ticketTable(tickets, byTicket) : h("p", { class: "muted" }, "No tickets yet."),
-      more ? h("p", { class: "muted small" }, "Only the 200 most recent invoices are matched to tickets here.") : null));
+      tickets.length ? ticketTable(tickets, byTicket) : h("p", { class: "muted" }, jw("No tickets yet.")),
+      more ? h("p", { class: "muted small" }, jw("Only the 200 most recent invoices are matched to tickets here.")) : null));
   }
   return nodes;
 }
@@ -358,7 +359,7 @@ function equipmentForm(defs, initial, submitLabel, onSubmit) {
       body.fields = Object.fromEntries(Object.entries(extra).map(([k, el]) => [k, el.value]));
       try { await onSubmit(body); } catch (err) { msg.textContent = err.message; }
     } },
-    field("Name (e.g. make and model)", base.name),
+    field(eg("vehicle_name", "Name (e.g. make and model)"), base.name),
     defs.filter(d => d.key !== "serial_number").map(d => field(d.label, extra[d.key])),
     field("Serial number / identifier", base.serial_number),
     field("Description / condition at intake", base.description),
@@ -411,11 +412,11 @@ async function dashboardView() {
   const tile = (label, value, href, warn) => h("a", { class: "tile" + (warn && value ? " warn" : ""), href: href || "#/tickets" },
     h("span", { class: "big" }, value === null || value === undefined ? "–" : String(value)), h("span", { class: "muted" }, label));
   nodes.push(h("div", { class: "tiles" },
-    tile("Open tickets", c.open_count), tile("Overdue", c.overdue, "#/tickets", true), tile("Due in 7 days", c.due_week),
+    tile(jw("Open tickets"), c.open_count), tile("Overdue", c.overdue, "#/tickets", true), tile("Due in 7 days", c.due_week),
     ...(c.unassigned === null ? [] : [tile("Unassigned", c.unassigned, "#/tickets", true)]),
     tile("Closed in 7 days", c.closed_week)));
 
-  grid.push(h("section", { class: "card dash-wide" }, h("h2", null, "My open tickets"),
+  grid.push(h("section", { class: "card dash-wide" }, h("h2", null, jw("My open tickets")),
     tickets.my_open.length ? ticketTable(tickets.my_open.map(t => ({ ...t, status_closed: 0, assignee_names: "" })))
       : h("p", { class: "muted" }, "Nothing assigned to you.")));
 
@@ -425,7 +426,7 @@ async function dashboardView() {
 
   if (touch_bases) grid.push(touchBaseCard(touch_bases));
 
-  grid.push(h("section", { class: "card" }, h("h2", null, "Recent ticket activity"),
+  grid.push(h("section", { class: "card" }, h("h2", null, jw("Recent ticket activity")),
     tickets.recent.length ? h("ul", { class: "history" }, tickets.recent.map(e => h("li", null,
       h("span", { class: "muted" }, e.ts.replace("T", " ").replace("Z", "") + " · " + (e.user_name || "system") + " — "),
       h("a", { href: "#/tickets/" + encodeURIComponent(e.ticket_id) }, "#" + e.number), " " + describeHistory(e))))
@@ -448,7 +449,7 @@ function auditLink(e) {
 
 async function activityView() {
   const { users } = can("users.read") ? await api("GET", "/api/users") : { users: [] };
-  const area = h("select", null, AUDIT_AREAS.map(([v, l]) => h("option", { value: v }, l)));
+  const area = h("select", null, AUDIT_AREAS.map(([v, l]) => h("option", { value: v }, jw(l))));
   const who = h("select", null, h("option", { value: "" }, "Everyone"), users.map(u => h("option", { value: u.id }, u.name)));
   const body = h("tbody");
   const more = h("button", { type: "button" }, "Load more");
@@ -513,9 +514,9 @@ async function ticketsView() {
   const errBox = h("div", { class: "error", role: "alert" });
   const count = h("span", { class: "muted tk-count", "aria-live": "polite" });
   const list = h("div", { class: "tk-scroll" });
-  const panel = h("aside", { class: "tk-panel", "aria-label": "Ticket details" });
+  const panel = h("aside", { class: "tk-panel", "aria-label": jw("Ticket details") });
   const more = h("button", { type: "button" }, "Load more");
-  const search = h("input", { type: "search", placeholder: "Search number, title, customer, serial", maxlength: 100, value: TK.q, "aria-label": "Search tickets" });
+  const search = h("input", { type: "search", placeholder: "Search number, title, customer, serial", maxlength: 100, value: TK.q, "aria-label": jw("Search tickets") });
   const statusSel = h("select", { "aria-label": "Status" },
     [["", "All statuses"], ["open", "Open statuses"], ["closed", "Closed / cancelled statuses"]].map(([v, l]) => h("option", { value: v, selected: TK.status === v }, l)),
     statuses.map(s => h("option", { value: s.id, selected: TK.status === s.id }, s.name)));
@@ -548,10 +549,10 @@ async function ticketsView() {
         label + (on ? (TK.dir === "asc" ? " ▲" : " ▼") : "")));
   }
   function draw() {
-    count.textContent = total + (total === 1 ? " ticket" : " tickets") + (tickets.length < total ? " (showing " + tickets.length + ")" : "");
+    count.textContent = total + (total === 1 ? jw(" ticket") : jw(" tickets")) + (tickets.length < total ? " (showing " + tickets.length + ")" : "");
     more.hidden = tickets.length >= total;
     if (!tickets.length) {
-      list.replaceChildren(h("p", { class: "muted tk-empty" }, "No tickets match these filters." + (TK.status !== "" ? " Try “All statuses” to include closed and cancelled tickets." : "")));
+      list.replaceChildren(h("p", { class: "muted tk-empty" }, jw("No tickets match these filters.") + (TK.status !== "" ? jw(" Try “All statuses” to include closed and cancelled tickets.") : "")));
       return;
     }
     const rows = tickets.map(t => {
@@ -562,10 +563,10 @@ async function ticketsView() {
       } }, t.number);
       return h("tr", { class: "tk-row" + (t.id === selected ? " selected" : ""), "data-id": t.id,
         onclick: (e) => { if (!e.target.closest("a")) link.click(); } },
-        h("td", null, link), h("td", { class: "tk-title" }, t.title), h("td", null, t.status_name),
+        h("td", null, link), h("td", { class: "tk-title" }, t.title, t.job_location ? h("div", { class: "muted small" }, "📍 " + t.job_location) : null), h("td", null, t.status_name),
         h("td", { class: "prio-" + t.priority }, t.priority), h("td", null, t.customer_name), h("td", null, t.equipment_names || ""),
         h("td", null, t.assignee_names || ""), h("td", null, (t.created_at || "").slice(0, 10)), h("td", null, (t.updated_at || "").slice(0, 10)),
-        h("td", { class: t.due_date && t.due_date < today() && !t.status_closed ? "overdue" : "" }, t.due_date || ""));
+        h("td", { class: t.due_date && t.due_date < today() && !t.status_closed ? "overdue" : "" }, (t.due_date || "") + (t.due_date && t.due_time ? " " + fmtTime(t.due_time) : "")));
     });
     list.replaceChildren(h("table", { class: "tk-table" },
       h("thead", null, h("tr", null, sortHead("number", "#"), h("th", null, "Title"), sortHead("status", "Status"), sortHead("priority", "Priority"),
@@ -589,7 +590,7 @@ async function ticketsView() {
     list.querySelectorAll("tr.tk-row").forEach(r => r.classList.toggle("selected", r.dataset.id === id));
     const bar = h("div", { class: "tk-panel-bar" },
       h("a", { href: "#/tickets/" + encodeURIComponent(id) }, "Open full page"),
-      h("button", { type: "button", onclick: closePanel, "aria-label": "Close ticket panel" }, "✕ Close"));
+      h("button", { type: "button", onclick: closePanel, "aria-label": jw("Close ticket panel") }, "✕ Close"));
     panel.replaceChildren(bar, h("p", { class: "muted" }, "Loading…"));
     try {
       const nodes = await ticketDetail(id, true);
@@ -609,10 +610,10 @@ async function ticketsView() {
   if (whoSel) whoSel.disabled = TK.mine;
 
   const check = (label, input) => h("label", { class: "inline" }, input, " " + label);
-  const newBtn = can("tickets.write") && can("customers.read") ? h("a", { class: "btn primary", href: "#/tickets/new" }, "+ New ticket") : null;
+  const newBtn = can("tickets.write") && can("customers.read") ? h("a", { class: "btn primary", href: "#/tickets/new" }, jw("+ New ticket")) : null;
   const layout = h("div", { class: "tk-layout" },
     h("section", { class: "card tk-main" },
-      h("div", { class: "tk-head" }, h("h2", null, "Tickets"), count, newBtn),
+      h("div", { class: "tk-head" }, h("h2", null, jw("Tickets")), count, newBtn),
       h("div", { class: "filters tk-filters" }, search, statusSel, prioSel, whoSel, check("Mine", mine), check("Overdue", overdue)),
       errBox, list, h("div", { class: "form-actions" }, more)),
     panel);
@@ -626,15 +627,16 @@ async function newTicketView() {
   const pre = new URLSearchParams(location.hash.split("?")[1] || "").get("customer");
   let customer = null;
   if (pre) { try { customer = await api("GET", "/api/customers/" + encodeURIComponent(pre)); } catch (e) { customer = null; } }
-  return [h("p", null, h("a", { href: "#/tickets" }, "← All tickets")), await newTicketCard(customer)];
+  return [h("p", null, h("a", { href: "#/tickets" }, jw("← All tickets"))), await newTicketCard(customer)];
 }
 
 async function newTicketCard(initialCustomer) {
   const msg = h("span", { class: "error", role: "alert" });
   const equipBox = h("div");
-  const title = h("input", { required: true, maxlength: 150, placeholder: "e.g. Laptop won't boot" });
+  const title = h("input", { required: true, maxlength: 150, placeholder: eg("job_title", "e.g. Laptop won't boot") });
   const priority = h("select", null, ["low", "normal", "high", "urgent"].map(p => h("option", { value: p, selected: p === "normal" }, p)));
   const due = h("input", { type: "date" });
+  const extra = jobExtraInputs(null);
   const symptoms = h("textarea", { rows: "2", maxlength: 2000 });
   const notes = h("textarea", { rows: "2", maxlength: 2000 });
   const staffBox = h("div");
@@ -660,13 +662,13 @@ async function newTicketCard(initialCustomer) {
   const picker = customerPicker({ initial: initialCustomer, onChange: loadEquipment });
   if (initialCustomer) loadEquipment(initialCustomer);
 
-  return h("section", { class: "card" }, h("h2", null, "New ticket"),
+  return h("section", { class: "card" }, h("h2", null, jw("New ticket")),
     h("form", { onsubmit: async (e) => {
         e.preventDefault(); msg.textContent = "";
         if (!picker.value()) { msg.textContent = "Choose a customer first."; return; }
         try {
           const t = await api("POST", "/api/tickets", {
-            customer_id: picker.value().id, title: title.value, priority: priority.value, due_date: due.value,
+            customer_id: picker.value().id, title: title.value, priority: priority.value, due_date: due.value, ...extra.values(due),
             symptoms: symptoms.value, intake_notes: notes.value,
             equipment_ids: equipChecks.filter(c => c.el.checked).map(c => c.id),
             assignee_ids: staffChecks.filter(c => c.el.checked).map(c => c.id) });
@@ -674,15 +676,26 @@ async function newTicketCard(initialCustomer) {
         } catch (err) { msg.textContent = err.message; }
       } },
       h("label", null, "Customer"), picker.el, equipBox,
-      field("Title", title), field("Priority", priority), field("Due date", due),
+      field("Title", title), field("Priority", priority), field("Due date", due), ...extra.fields,
       field("Customer-reported symptoms", symptoms), field("Intake notes", notes), staffBox,
-      h("div", { class: "form-actions" }, h("button", { class: "primary", type: "submit" }, "Create ticket"), msg)));
+      h("div", { class: "form-actions" }, h("button", { class: "primary", type: "submit" }, jw("Create ticket")), msg)));
+}
+
+// Extra job fields some shop types turn on (profile option ticket_options): "where" and a due time. Nothing for other types.
+function jobExtraInputs(t) {
+  const o = (ME && ME.ticket_options) || {};
+  const where = o.location_label ? h("input", { maxlength: 200, value: (t && t.job_location) || "", placeholder: "Address, shop bay or parking spot", "aria-label": o.location_label }) : null;
+  const time = o.due_time ? h("input", { type: "time", value: (t && t.due_time) || "", "aria-label": "Due time" }) : null;
+  return {
+    fields: [where ? field(o.location_label, where) : null, time ? field("Due time", time) : null].filter(Boolean),
+    values: (dueInput) => Object.assign({}, where ? { job_location: where.value } : {}, time ? { due_time: dueInput.value ? time.value : "" } : {}),
+  };
 }
 
 function describeHistory(e) {
   const d = e.detail || {};
   switch (e.kind) {
-    case "created": return "Ticket " + (d.number || "") + " created (" + (d.status || "") + ")";
+    case "created": return jw("Ticket ") + (d.number || "") + " created (" + (d.status || "") + ")";
     case "status": return "Status: " + d.from + " → " + d.to;
     case "assigned": return "Assigned to " + (d.name || "");
     case "unassigned": return "Unassigned " + (d.name || "");
@@ -696,7 +709,7 @@ function describeHistory(e) {
     case "time_removed": return "Removed " + fmtHM(d.seconds || 0) + " of time";
     case "touch_base": return d.action === "scheduled" ? "Scheduled a customer touch base for " + d.due_date
       : d.action === "rescheduled" ? "Rescheduled the touch base to " + d.due_date
-      : d.action === "cancelled" ? "Cancelled the touch base" : "Touch base follow-up ticket #" + (d.number || "") + " created";
+      : d.action === "cancelled" ? "Cancelled the touch base" : jw("Touch base follow-up ticket #") + (d.number || "") + " created";
     case "note": return "Added a note" + (d.files ? " with " + d.files + (d.files === 1 ? " file" : " files") : "");
     default: return e.kind;
   }
@@ -735,7 +748,7 @@ async function ticketDetail(id, inPanel) {
   const eid = encodeURIComponent(id);
   const [t, st] = await Promise.all([api("GET", "/api/tickets/" + eid), api("GET", "/api/statuses")]);
   const msg = h("div", { class: "error", role: "alert" });
-  const nodes = inPanel ? [] : [h("p", null, h("a", { href: "#/tickets" }, "← All tickets"))];
+  const nodes = inPanel ? [] : [h("p", null, h("a", { href: "#/tickets" }, jw("← All tickets")))];
   const run = (fn) => async () => { msg.textContent = ""; try { await fn(); route(); } catch (err) { msg.textContent = err.message; } };
 
   // header + status
@@ -754,7 +767,8 @@ async function ticketDetail(id, inPanel) {
         t.customer_phone ? " · " + t.customer_phone : "", t.customer_email ? " · " + t.customer_email : "")),
       fact("Status", statusSel),
       fact("Priority", t.priority),
-      fact("Due date", t.due_date || "Not set"),
+      fact("Due date", t.due_date ? t.due_date + (t.due_time ? " at " + fmtTime(t.due_time) : "") : "Not set"),
+      ME.ticket_options && ME.ticket_options.location_label ? fact(ME.ticket_options.location_label, t.job_location || "Not set") : null,
       fact("Assigned to", assignedRow),
       fact(term("items", "Items"), t.equipment.length ? t.equipment.map(e => e.name + (e.serial_number ? " #" + e.serial_number : "")).join(", ") : "None"),
       t.closed_at ? fact("Closed", t.closed_at.replace("T", " ").replace("Z", "")) : null,
@@ -771,6 +785,7 @@ async function ticketDetail(id, inPanel) {
     const title = h("input", { value: t.title, required: true, maxlength: 150 });
     const priority = h("select", null, ["low", "normal", "high", "urgent"].map(p => h("option", { value: p, selected: p === t.priority }, p)));
     const due = h("input", { type: "date", value: t.due_date || "" });
+    const extra = jobExtraInputs(t);
     const symptoms = h("textarea", { rows: "2", maxlength: 2000 }, t.symptoms);
     const notes = h("textarea", { rows: "2", maxlength: 2000 }, t.intake_notes);
     let checks = [];
@@ -779,16 +794,16 @@ async function ticketDetail(id, inPanel) {
       const { equipment } = await api("GET", "/api/equipment?customer_id=" + encodeURIComponent(t.customer_id));
       const linked = new Set(t.equipment.map(e => e.id));
       checks = equipment.map(e => ({ id: e.id, el: h("input", { type: "checkbox", checked: linked.has(e.id) }) }));
-      equipBox.append(h("label", null, term("items", "Items") + " on this ticket"),
+      equipBox.append(h("label", null, term("items", "Items") + jw(" on this ticket")),
         ...equipment.map((e, i) => h("label", { class: "inline" }, checks[i].el, " " + e.name)));
     }
-    head.append(h("details", { class: "ticket-edit" }, h("summary", null, "Edit ticket"),
+    head.append(h("details", { class: "ticket-edit" }, h("summary", null, jw("Edit ticket")),
       h("form", { onsubmit: (e) => { e.preventDefault(); run(() => {
-          const body = { title: title.value, priority: priority.value, due_date: due.value, symptoms: symptoms.value, intake_notes: notes.value };
+          const body = { title: title.value, priority: priority.value, due_date: due.value, ...extra.values(due), symptoms: symptoms.value, intake_notes: notes.value };
           if (can("equipment.read")) body.equipment_ids = checks.filter(c => c.el.checked).map(c => c.id);
           return api("PUT", "/api/tickets/" + eid, body);
         })(); } },
-        field("Title", title), field("Priority", priority), field("Due date", due),
+        field("Title", title), field("Priority", priority), field("Due date", due), ...extra.fields,
         field("Customer-reported symptoms", symptoms), field("Intake notes", notes), equipBox,
         h("div", { class: "form-actions" }, h("button", { class: "primary", type: "submit" }, "Save changes")))));
   }
@@ -804,7 +819,7 @@ async function ticketDetail(id, inPanel) {
       invoices.length ? h("ul", { class: "history" }, invoices.map(i => h("li", null,
         h("a", { href: "#/invoices/" + encodeURIComponent(i.id) }, i.number || "Draft"),
         " · " + i.status + " · " + money(i.total_cents)))) : h("p", { class: "muted" }, "No invoices yet."),
-      can("invoices.write") ? h("a", { class: "btn", href: "#/invoices/new?ticket=" + eid }, "+ Create invoice for this ticket") : null));
+      can("invoices.write") ? h("a", { class: "btn", href: "#/invoices/new?ticket=" + eid }, jw("+ Create invoice for this ticket")) : null));
   }
 
   // history
@@ -854,12 +869,12 @@ async function statusesCard() {
   const msg = h("span", { class: "muted" });
   function draw() {
     const move = (i, d) => { const j = i + d; if (j < 0 || j >= rows.length) return; [rows[i], rows[j]] = [rows[j], rows[i]]; draw(); };
-    card.replaceChildren(h("h2", null, "Ticket statuses"),
-      h("p", { class: "muted" }, "Order here is the order of the workflow. The first status is used for new tickets. Removed statuses stay on old tickets."),
+    card.replaceChildren(h("h2", null, jw("Ticket statuses")),
+      h("p", { class: "muted" }, jw("Order here is the order of the workflow. The first status is used for new tickets. Removed statuses stay on old tickets.")),
       ...rows.map((r, i) => h("div", { class: "status-row" },
         h("input", { value: r.name, maxlength: 60, "aria-label": "Status name", oninput: (e) => { r.name = e.target.value; } }),
         h("input", { value: r.customer_label, maxlength: 80, placeholder: "Customer sees…", "aria-label": "Customer label", oninput: (e) => { r.customer_label = e.target.value; } }),
-        h("label", { class: "inline" }, h("input", { type: "checkbox", checked: r.is_closed, onchange: (e) => { r.is_closed = e.target.checked; } }), " Closes ticket"),
+        h("label", { class: "inline" }, h("input", { type: "checkbox", checked: r.is_closed, onchange: (e) => { r.is_closed = e.target.checked; } }), jw(" Closes ticket")),
         h("button", { type: "button", onclick: () => move(i, -1), "aria-label": "Move up" }, "↑"),
         h("button", { type: "button", onclick: () => move(i, 1), "aria-label": "Move down" }, "↓"),
         h("button", { type: "button", onclick: () => { rows.splice(i, 1); draw(); } }, "Remove"))),
@@ -883,7 +898,7 @@ async function numberingCard() {
   const prefix = h("input", { value: cur.prefix, maxlength: 10 });
   const next = h("input", { type: "number", min: "1", value: String(cur.next_number) });
   const msg = h("span", { class: "muted" });
-  return h("section", { class: "card" }, h("h2", null, "Ticket numbering"),
+  return h("section", { class: "card" }, h("h2", null, jw("Ticket numbering")),
     h("form", { onsubmit: async (e) => {
         e.preventDefault(); msg.className = "muted"; msg.textContent = "Saving…";
         try {
@@ -891,7 +906,7 @@ async function numberingCard() {
           next.value = String(r.next_number); msg.className = "ok"; msg.textContent = "Saved";
         } catch (err) { msg.className = "error"; msg.textContent = err.message; }
       } },
-      field("Prefix (optional, e.g. RS-)", prefix), field("Next ticket number", next),
+      field(eg("prefix", "Prefix (optional, e.g. RS-)"), prefix), field(jw("Next ticket number"), next),
       h("div", { class: "form-actions" }, h("button", { class: "primary", type: "submit" }, "Save"), msg)));
 }
 
@@ -994,7 +1009,7 @@ async function start() {
     if (me.user.must_change_password) return passwordScreen();
     await dashboard(me);
   } catch (err) {
-    csrf = ""; ME = null; window.onhashchange = null; setBrand(null); document.title = "ShopDesk";
+    csrf = ""; ME = null; window.onhashchange = null; document.body.classList.remove("mobile-first"); setBrand(null); document.title = "ShopDesk";
     if (err.status === 401) {
       try { authScreen(await api("GET", "/api/bootstrap")); }
       catch (e2) { render(h("p", { class: "center error" }, e2.message)); }

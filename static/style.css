@@ -373,3 +373,33 @@ details.ticket-edit summary { cursor: pointer; font-weight: 600; }
 .row-error { color: var(--danger); }
 .notice { border: 1px solid var(--accent); }
 .temp-password { font-size: 1.3rem; letter-spacing: .06em; user-select: all; }
+/* ---- v0.1.2: phone-friendly layout, switched on per shop type (body.mobile-first, e.g. auto tinting) ---- */
+@media (max-width: 700px) {
+  body.mobile-first main, body.mobile-first main.wide { padding: .5rem .5rem 4rem; }
+  body.mobile-first input, body.mobile-first select, body.mobile-first textarea, body.mobile-first button, body.mobile-first .btn {
+    font-size: 16px; min-height: 44px; }
+  body.mobile-first input[type="checkbox"] { min-height: 0; width: 1.4rem; height: 1.4rem; }
+  body.mobile-first label.inline { display: flex; align-items: center; gap: .5rem; min-height: 44px; }
+  body.mobile-first header.top { flex-wrap: wrap; gap: .4rem; }
+  body.mobile-first .nav { display: flex; overflow-x: auto; white-space: nowrap; gap: .25rem; -webkit-overflow-scrolling: touch; }
+  body.mobile-first .nav a, body.mobile-first .nav .menu-btn { display: inline-flex; align-items: center; min-height: 44px; padding: 0 .8rem; }
+  body.mobile-first .card { padding: .8rem; }
+  body.mobile-first .grid2, body.mobile-first .ticket-facts { grid-template-columns: 1fr; }
+  body.mobile-first .form-actions { display: flex; flex-wrap: wrap; gap: .5rem; }
+  body.mobile-first .form-actions > button, body.mobile-first .form-actions > .btn { flex: 1 1 100%; }
+  body.mobile-first .filters, body.mobile-first .tk-filters { display: flex; flex-direction: column; align-items: stretch; }
+  body.mobile-first .tk-filters input[type="search"] { flex: none; width: 100%; }
+  body.mobile-first dialog.modal { width: calc(100vw - 1rem); max-width: none; margin: .5rem auto; }
+  body.mobile-first .tb-quick { display: flex; flex-wrap: wrap; gap: .4rem; }
+  body.mobile-first .tb-quick button { flex: 1 1 45%; }
+  /* the Jobs table becomes one card per job */
+  body.mobile-first .tk-scroll { max-height: none; overflow: visible; }
+  body.mobile-first .tk-table, body.mobile-first .tk-table tbody { display: block; }
+  body.mobile-first .tk-table thead { display: none; }
+  body.mobile-first .tk-table tr.tk-row { display: grid; grid-template-columns: 1fr 1fr; gap: .15rem .6rem; padding: .6rem; margin-bottom: .6rem;
+    border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
+  body.mobile-first .tk-table td { display: block; border: 0; padding: .1rem 0; }
+  body.mobile-first .tk-table td:nth-child(2) { grid-column: 1 / -1; font-weight: 600; }
+  body.mobile-first .tk-table td:nth-child(1) { grid-column: 1 / -1; }
+  body.mobile-first .tk-table td:nth-child(8), body.mobile-first .tk-table td:nth-child(9) { display: none; }
+}

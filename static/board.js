@@ -128,9 +128,9 @@ async function boardView() {
   mine.addEventListener("change", reload);
   await load();
   const bar = h("div", { class: "filters" }, search, prio, h("label", { class: "inline" }, mine, " Mine"),
-    can("tickets.write") && can("customers.read") ? h("a", { class: "btn primary", href: "#/tickets/new" }, "+ New ticket") : null);
+    can("tickets.write") && can("customers.read") ? h("a", { class: "btn primary", href: "#/tickets/new" }, jw("+ New ticket")) : null);
   const intro = (writable ? "Drag a card to another column to change its status (on a phone, hold ⠿ or use the arrows). " : "") +
-    "Closed tickets stay for " + data.closed_days + " days.";
+    jw("Closed tickets stay for ") + data.closed_days + " days.";
   return [h("div", { class: "board-bar" }, h("h2", null, "Queue"), bar, h("span", { class: "muted small" }, intro)), errBox, wrap];
 }
 

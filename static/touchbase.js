@@ -32,7 +32,7 @@ function touchBaseDialog({ ticket, existing = null, onSaved = null }) {
   const today = tbToday();
   const days = h("input", { type: "number", min: "0", max: "3650", inputmode: "numeric", "aria-label": "Days from today" });
   const date = h("input", { type: "text", placeholder: "MM/DD/YYYY", maxlength: 10, inputmode: "numeric", "aria-label": "Calendar date" });
-  const notes = h("textarea", { rows: "3", maxlength: 1000, placeholder: "What to check on, e.g. is the battery replacement holding up?" }, existing ? existing.notes : "");
+  const notes = h("textarea", { rows: "3", maxlength: 1000, placeholder: eg("touch_notes", "What to check on, e.g. is the battery replacement holding up?") }, existing ? existing.notes : "");
   const err = h("div", { class: "error", role: "alert" });
   const skip = h("button", { type: "button", autofocus: true }, existing ? "Close" : "Skip");
   const save = h("button", { type: "button", class: "primary" }, existing ? "Save" : "Schedule");
@@ -58,7 +58,7 @@ function touchBaseDialog({ ticket, existing = null, onSaved = null }) {
 
   const dlg = tbModal(
     h("h2", null, existing ? "Reschedule touch base" : "Customer Touch Base"),
-    h("p", { class: "muted small" }, "Ticket #" + ticket.number + " · " + ticket.customer_name +
+    h("p", { class: "muted small" }, jw("Ticket #") + ticket.number + " · " + ticket.customer_name +
       (existing ? "" : " is complete. Optional: add a reminder to follow up with this customer.")),
     h("div", { class: "tb-row" }, h("label", null, "Touch base in"), days, h("span", null, "days")),
     h("div", { class: "tb-row" }, h("label", null, "Create calendar item for"), date),
@@ -104,8 +104,8 @@ function touchBaseDetail(tb, onChange) {
     h("h2", null, "Customer touch base"),
     h("p", null, h("strong", null, tb.customer_name), " · " + tbUS(tbFromIso(tb.due_date))),
     tb.notes ? h("p", { class: "note-body" }, tb.notes) : h("p", { class: "muted" }, "No notes."),
-    h("p", { class: "muted small" }, "From ticket ", h("a", { href: "#/tickets/" + enc(tb.ticket_id), onclick: () => dlg.close() }, "#" + tb.ticket_number),
-      " · scheduled by " + (tb.scheduled_by_name || "unknown") + ". A follow-up ticket is created automatically on the due date."),
+    h("p", { class: "muted small" }, jw("From ticket "), h("a", { href: "#/tickets/" + enc(tb.ticket_id), onclick: () => dlg.close() }, "#" + tb.ticket_number),
+      " · scheduled by " + (tb.scheduled_by_name || "unknown") + jw(". A follow-up ticket is created automatically on the due date.")),
     h("div", { class: "form-actions" },
       h("button", { type: "button", autofocus: true, onclick: () => dlg.close() }, "Close"),
       can("tickets.write") ? [" ",

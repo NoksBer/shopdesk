@@ -10,7 +10,7 @@ const calTimeText = (t) => {                                        // "14:30" -
 
 // Add (item = null) or edit one item. `date` pre-fills the date box with the day selected on the calendar.
 function calendarItemDialog({ item = null, date = "", onSaved = () => {} }) {
-  const title = h("input", { maxlength: 120, required: true, placeholder: "e.g. Pick up parts order", value: item ? item.title : "" });
+  const title = h("input", { maxlength: 120, required: true, placeholder: eg("calendar_item", "e.g. Pick up parts order"), value: item ? item.title : "" });
   const day = h("input", { type: "date", value: item ? item.item_date : date });
   const when = h("input", { type: "time", value: item ? item.item_time : "" });
   const notes = h("textarea", { rows: "3", maxlength: 1000 }, item ? item.notes : "");

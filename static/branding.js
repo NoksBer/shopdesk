@@ -45,7 +45,7 @@ function brandingCard() {
     return h("div", { class: "color-row" }, h("label", null, title), h("div", { class: "color-controls" }, input, sw, reset), h("p", { class: "muted small" }, help));
   };
 
-  const tagline = h("input", { value: saved.tagline, maxlength: 120, placeholder: "e.g. Fast, friendly repairs since 2009" });
+  const tagline = h("input", { value: saved.tagline, maxlength: 120, placeholder: eg("tagline", "e.g. Fast, friendly repairs since 2009") });
   const showName = h("input", { type: "checkbox", checked: saved.show_name });
 
   const logoImg = h("img", { class: "logo-preview", alt: "Current logo" });

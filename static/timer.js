@@ -69,11 +69,11 @@ async function ticketTimeCard(t) {
       card.append(field("Note (optional)", note),
         h("div", { class: "form-actions wrap" },
           h("button", { type: "button", class: "primary", onclick: act(() => api("POST", "/api/tickets/" + eid + "/clock-in", { note: note.value })) },
-            elsewhere ? "Switch timer to this ticket" : "Clock in"),
+            elsewhere ? jw("Switch timer to this ticket") : "Clock in"),
           elsewhere ? h("span", { class: "muted small" }, "You are currently clocked in on #" + elsewhere.ticket_number + ". Switching stops that timer.") : null));
     }
   } else if (d.ticket_closed) {
-    card.append(h("p", { class: "muted small" }, "This ticket is closed. Reopen it to clock in. You can still add time below."));
+    card.append(h("p", { class: "muted small" }, jw("This ticket is closed. Reopen it to clock in. You can still add time below.")));
   }
 
   // totals
@@ -182,7 +182,7 @@ async function timeView() {
         h("thead", null, h("tr", null, ["Person", "Time", "Billable"].map((x, i) => h("th", { class: i ? "num" : "" }, x)))),
         h("tbody", null, r.by_user.map(u => h("tr", null, h("td", null, u.user_name), h("td", { class: "num" }, fmtHM(u.seconds)), h("td", { class: "num" }, fmtHM(u.billable_seconds))))))) : null,
       r.entries.length ? h("div", { class: "table-wrap" }, h("table", null,
-        h("thead", null, h("tr", null, ["Date", "Who", "Ticket", "Note", "Time"].map((x, i) => h("th", { class: i === 4 ? "num" : "" }, x)))),
+        h("thead", null, h("tr", null, ["Date", "Who", jw("Ticket"), "Note", "Time"].map((x, i) => h("th", { class: i === 4 ? "num" : "" }, x)))),
         h("tbody", null, r.entries.map(e => h("tr", null, h("td", null, e.work_date), h("td", null, e.user_name),
           h("td", null, h("a", { href: "#/tickets/" + enc(e.ticket_id) }, "#" + e.ticket_number), " " + e.ticket_title),
           h("td", null, e.note, e.billable ? "" : [" ", badge("non-billable")], e.running ? [" ", badge("running", "badge-high")] : null),
@@ -201,6 +201,6 @@ async function timeView() {
   who.addEventListener("change", reload);
   await load();
   return [h("section", { class: "card" }, h("h2", null, manage ? "Timesheets" : "My time"),
-    h("p", { class: "muted small" }, "Clock in and out from a ticket page. Time per person is below" + (manage ? "; use the ticket to edit an entry." : ".")),
+    h("p", { class: "muted small" }, jw("Clock in and out from a ticket page. Time per person is below") + (manage ? jw("; use the ticket to edit an entry.") : ".")),
     h("div", { class: "filters" }, preset, from, to, manage ? who : null), msg, out)];
 }

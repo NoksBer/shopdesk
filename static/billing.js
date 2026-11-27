@@ -52,7 +52,7 @@ async function servicesView() {
   const inactive = h("input", { type: "checkbox" });
   let editing = null;
 
-  const name = h("input", { required: true, maxlength: 120, placeholder: "e.g. Screen replacement" });
+  const name = h("input", { required: true, maxlength: 120, placeholder: eg("service_name", "e.g. Screen replacement") });
   const desc = h("input", { maxlength: 300, placeholder: "Short description (optional)" });
   const price = h("input", { required: true, inputmode: "decimal", placeholder: "0.00" });
   const taxable = h("input", { type: "checkbox", checked: true });
@@ -239,7 +239,7 @@ async function inventoryView() {
   async function openAdjust(it) {
     const d = await api("GET", "/api/inventory/" + enc(it.id));
     const delta = h("input", { type: "number", step: "1", required: true, placeholder: "+5 or -2" });
-    const reason = h("input", { required: true, maxlength: 120, placeholder: "e.g. Received from supplier, damaged, count correction" });
+    const reason = h("input", { required: true, maxlength: 120, placeholder: eg("stock_reason", "e.g. Received from supplier, damaged, count correction") });
     const aMsg = h("span", { class: "error", role: "alert" });
     adjustBox.replaceChildren(h("section", { class: "card" }, h("h2", null, "Adjust stock: SKU " + d.part_no + " · " + d.name + " (now " + d.quantity + ")"),
       h("form", { onsubmit: async (e) => {
@@ -365,7 +365,7 @@ async function invoicesView() {
     list.replaceChildren(r.invoices.length ? h("div", { class: "table-wrap" }, h("table", null,
       h("thead", null, h("tr", null, ["Invoice", "Customer", "Issued", "Due", "Total", "Status"].map(t => h("th", null, t)))),
       h("tbody", null, r.invoices.map(i => h("tr", null,
-        h("td", null, h("a", { href: "#/invoices/" + enc(i.id) }, i.number || "Draft"), i.ticket_number ? h("div", { class: "muted small" }, "Ticket #" + i.ticket_number) : null),
+        h("td", null, h("a", { href: "#/invoices/" + enc(i.id) }, i.number || "Draft"), i.ticket_number ? h("div", { class: "muted small" }, jw("Ticket #") + i.ticket_number) : null),
         h("td", null, i.customer_name), h("td", null, i.issue_date || ""), h("td", null, i.due_date || ""),
         h("td", null, money(i.total_cents)), h("td", null, statusBadge(i)))))))
       : h("p", { class: "muted" }, "No invoices match."));
@@ -395,7 +395,7 @@ async function invoiceNewView() {
   const picker = customerPicker({ initial: customer });
   return [h("p", null, h("a", { href: "#/invoices" }, "← All invoices")),
     h("section", { class: "card" }, h("h2", null, "New invoice"),
-      ticket ? h("p", { class: "muted" }, "For ticket #" + ticket.number + " · " + ticket.title) : null,
+      ticket ? h("p", { class: "muted" }, jw("For ticket #") + ticket.number + " · " + ticket.title) : null,
       h("form", { onsubmit: async (e) => {
           e.preventDefault(); msg.textContent = "";
           const c = picker.value();
@@ -435,7 +435,7 @@ function invoiceSheet(inv, b, s) {
         bt.contact_name ? h("div", null, bt.contact_name) : null, bt.address ? h("div", null, bt.address) : null,
         bt.email ? h("div", null, bt.email) : null, bt.phone ? h("div", null, bt.phone) : null),
       h("div", { class: "sheet-box" }, h("div", { class: "sheet-label" }, "Details"),
-        kv("Issued", inv.issue_date), kv("Due", inv.due_date), kv("Ticket", inv.ticket_number ? "#" + inv.ticket_number : ""),
+        kv("Issued", inv.issue_date), kv("Due", inv.due_date), kv(jw("Ticket"), inv.ticket_number ? "#" + inv.ticket_number : ""),
         kv("Status", inv.status === "draft" ? "Draft" : inv.status === "paid" ? "Paid" : inv.status === "void" ? "Void" : "Unpaid"))),
     h("table", { class: "sheet-lines" },
       h("thead", null, h("tr", null, h("th", null, "Description"), h("th", { class: "num" }, "Qty"), h("th", { class: "num" }, "Price"), h("th", { class: "num" }, "Amount"))),
@@ -627,7 +627,7 @@ async function invoiceEditor(inv, b, s) {
   drawLines();
   return [h("p", null, h("a", { href: "#/invoices" }, "← All invoices")),
     h("section", { class: "card" }, h("h2", null, "Draft invoice " , badge("draft", "inv-draft")),
-      h("p", null, h("strong", null, inv.customer_name), inv.ticket_number ? "  ·  Ticket #" + inv.ticket_number : ""),
+      h("p", null, h("strong", null, inv.customer_name), inv.ticket_number ? jw("  ·  Ticket #") + inv.ticket_number : ""),
       h("div", { class: "grid2" }, field("Due date (blank = " + s.terms_days + " days after issue)", dueIn), field("Tax rate (%)", taxIn)),
       field("Notes shown on the invoice", notesIn)),
     ticketLinkCard(inv),
@@ -677,7 +677,7 @@ function ticketLinkCard(inv) {
     catch (e) { msg.textContent = e.message; }
   };
   function showPicker() {
-    const q = h("input", { type: "search", placeholder: "Search ticket number, title or customer", maxlength: 100, "aria-label": "Search open tickets" });
+    const q = h("input", { type: "search", placeholder: jw("Search ticket number, title or customer"), maxlength: 100, "aria-label": jw("Search open tickets") });
     const results = h("div", { class: "picker-results" });
     let timer;
     async function find() {
@@ -685,20 +685,20 @@ function ticketLinkCard(inv) {
         const r = await api("GET", "/api/tickets?customer_id=" + enc(inv.customer_id) + "&status_id=open&limit=10&q=" + enc(q.value.trim()));
         results.replaceChildren(...(r.tickets.length ? r.tickets.map(t => h("button", { type: "button", class: "picker-item", onclick: () => setLink(t.id) },
           h("strong", null, "#" + t.number + " · " + t.title), " · " + t.customer_name + " · " + t.status_name))
-          : [h("p", { class: "muted" }, "No open tickets for " + inv.customer_name + " match.")]));
+          : [h("p", { class: "muted" }, jw("No open tickets for ") + inv.customer_name + " match.")]));
       } catch (e) { msg.textContent = e.message; }
     }
     q.addEventListener("input", () => { clearTimeout(timer); timer = setTimeout(find, 200); });
-    box.replaceChildren(h("p", { class: "muted small" }, "Only open tickets for " + inv.customer_name + " are listed."), q, results,
+    box.replaceChildren(h("p", { class: "muted small" }, jw("Only open tickets for ") + inv.customer_name + " are listed."), q, results,
       h("div", { class: "form-actions" }, h("button", { type: "button", onclick: draw }, "Cancel")));
     find();
   }
   function draw() {
-    const linked = inv.ticket_id ? h("p", null, "Linked to ", h("a", { href: "#/tickets/" + enc(inv.ticket_id) }, "ticket #" + inv.ticket_number)) : h("p", { class: "muted" }, "Not linked to a ticket.");
+    const linked = inv.ticket_id ? h("p", null, "Linked to ", h("a", { href: "#/tickets/" + enc(inv.ticket_id) }, jw("ticket #") + inv.ticket_number)) : h("p", { class: "muted" }, jw("Not linked to a ticket."));
     box.replaceChildren(linked, editable ? h("div", { class: "form-actions" },
-      h("button", { type: "button", onclick: showPicker }, inv.ticket_id ? "Change ticket" : "Attach to ticket"),
-      inv.ticket_id ? h("button", { type: "button", onclick: () => { if (confirm("Remove the link to ticket #" + inv.ticket_number + "? The invoice itself does not change.")) setLink(null); } }, "Remove link") : null) : null);
+      h("button", { type: "button", onclick: showPicker }, inv.ticket_id ? jw("Change ticket") : jw("Attach to ticket")),
+      inv.ticket_id ? h("button", { type: "button", onclick: () => { if (confirm(jw("Remove the link to ticket #") + inv.ticket_number + "? The invoice itself does not change.")) setLink(null); } }, "Remove link") : null) : null);
   }
   draw();
-  return h("section", { class: "card" }, h("h2", null, "Ticket"), box, msg);
+  return h("section", { class: "card" }, h("h2", null, jw("Ticket")), box, msg);
 }

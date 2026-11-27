@@ -137,7 +137,7 @@ async function ledgerView() {
   const aDir = h("select", { "aria-label": "Money in or out" }, h("option", { value: "in" }, "Money in"), h("option", { value: "out", selected: true }, "Money out"));
   const aCat = h("select", { "aria-label": "Category" });
   const aAmount = h("input", { required: true, inputmode: "decimal", placeholder: "0.00" });
-  const aDesc = h("input", { required: true, maxlength: 200, placeholder: "e.g. Shop rent for March" });
+  const aDesc = h("input", { required: true, maxlength: 200, placeholder: eg("ledger", "e.g. Shop rent for March") });
   const aDate = h("input", { type: "date", value: localToday() });
   const aMsg = h("span", { class: "error", role: "alert" });
   function refreshAddCategories() {

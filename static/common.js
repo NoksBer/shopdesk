@@ -35,6 +35,26 @@ const enc = encodeURIComponent;
 const ymd = (d) => d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
 const localToday = () => ymd(new Date());
 
+// Shop-type wording. A shop type may rename tickets (the auto tinting type says "Job") and supply its own "e.g." examples
+// (terminology keys "ticket", "tickets", "eg_*"). Every other shop type gets the original text back unchanged.
+function jw(text) {
+  let me = null;
+  try { me = ME; } catch (e) { /* the app has not started yet */ }
+  const w = me && me.terminology && me.terminology.ticket;
+  if (!w) return text;
+  const plural = (me.terminology.tickets || w + "s");
+  return text.replace(/Tickets/g, plural).replace(/tickets/g, plural.toLowerCase()).replace(/Ticket/g, w).replace(/ticket/g, w.toLowerCase());
+}
+function eg(key, fallback) {
+  let me = null;
+  try { me = ME; } catch (e) { /* not started */ }
+  return (me && me.terminology && me.terminology["eg_" + key]) || fallback;
+}
+const fmtTime = (hhmm) => {                                 // "14:30" -> "2:30 PM" (the device's own style)
+  const m = /^(\d{2}):(\d{2})$/.exec(hhmm || "");
+  return m ? new Date(2000, 0, 1, +m[1], +m[2]).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "";
+};
+
 // Type-ahead customer chooser. Returns { el, value() }. Shows matches as you type (and a starter list at once).
 function customerPicker({ initial = null, onChange = () => {} } = {}) {
   let selected = initial, timer;

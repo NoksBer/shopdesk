@@ -6,7 +6,7 @@ from ..app import COOKIE_TENANT
 from ..audit import audit
 from ..db import tx
 from ..http_util import Response
-from ..profiles import shop_type_list
+from ..profiles import PROFILES, shop_type_list
 from ..util import ApiError, clean_email, clean_text, now_iso, now_ts
 
 GENERIC_LOGIN_ERROR = "Invalid email or password"
@@ -145,13 +145,20 @@ def me(ctx):
     biz = db.execute("SELECT name, shop_type FROM business_profile WHERE id=1").fetchone()
     terminology = db.execute("SELECT value FROM settings WHERE key='terminology'").fetchone()
     presets = db.execute("SELECT value FROM settings WHERE key='touch_base_presets'").fetchone()
+    # Wording added to a shop type's profile later (for example "Job") also reaches shops of that type created earlier:
+    # stored terminology wins, and the profile only fills keys the shop does not have. Types without such keys are unchanged.
+    prof = PROFILES.get(biz["shop_type"], {})
+    merged_terms = json.loads(terminology["value"]) if terminology else {}
+    for key, value in prof.get("terminology", {}).items():
+        merged_terms.setdefault(key, value)
     return {
         "touch_base_presets": json.loads(presets["value"]) if presets else [],
+        "ticket_options": prof.get("ticket_options", {}),
         "user": {"id": ctx.user.id, "email": ctx.user.email, "name": ctx.user.name,
                  "role": ctx.user.role, "role_label": ctx.user.role_label,
                  "must_change_password": ctx.user.must_change_password},
         "permissions": sorted(ctx.user.permissions) if ctx.user.role != "owner" else ["*"],
         "business": {"name": biz["name"], "shop_type": biz["shop_type"]},
-        "terminology": json.loads(terminology["value"]) if terminology else {},
+        "terminology": merged_terms,
         "csrf": ctx.session["csrf"],
     }
