@@ -344,3 +344,32 @@ details.ticket-edit summary { cursor: pointer; font-weight: 600; }
 .dash-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(420px, 100%), 1fr)); gap: 1rem; align-items: start; max-width: 2200px; }
 .dash-grid > .card { margin-bottom: 0; min-width: 0; }
 .dash-grid > .card.dash-wide { grid-column: 1 / -1; }
+
+/* ---- v0.1.0: Tickets page (full width, table + side panel), import, admin console ---- */
+.tk-head { display: flex; flex-wrap: wrap; gap: .6rem; align-items: center; }
+.tk-head h2 { margin: 0; }
+.tk-count { margin-right: auto; }
+.tk-filters { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
+.tk-filters input[type="search"] { flex: 1 1 260px; min-width: 200px; }
+.tk-layout { display: block; }
+.tk-panel { display: none; }
+.tk-scroll { overflow: auto; }
+.tk-table { width: 100%; border-collapse: collapse; font-size: .9rem; }
+.tk-table th, .tk-table td { padding: .35rem .5rem; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+.tk-table .tk-title { min-width: 180px; }
+.tk-row { cursor: pointer; }
+.tk-row:hover, .tk-row.selected { background: var(--panel); outline: 1px solid var(--accent); outline-offset: -1px; }
+.sort-btn { background: none; border: 0; padding: 0; font: inherit; font-weight: 600; color: inherit; cursor: pointer; white-space: nowrap; }
+.tk-empty { padding: 1rem 0; }
+@media (min-width: 901px) {
+  .tk-scroll { max-height: calc(100vh - 250px); }
+  .tk-table thead th { position: sticky; top: 0; background: var(--panel); z-index: 1; }
+  .tk-layout.has-panel { display: grid; grid-template-columns: minmax(0, 1fr) minmax(380px, 520px); gap: .8rem; align-items: start; }
+  .tk-layout.has-panel .tk-panel { display: block; position: sticky; top: .5rem; max-height: calc(100vh - 1rem); overflow: auto; }
+  .tk-panel-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: .4rem; }
+}
+.sub-row td { border-bottom: 1px solid var(--line); padding-top: 0; }
+.ticket-invoices { margin: 0 0 .3rem; }
+.row-error { color: var(--danger); }
+.notice { border: 1px solid var(--accent); }
+.temp-password { font-size: 1.3rem; letter-spacing: .06em; user-select: all; }

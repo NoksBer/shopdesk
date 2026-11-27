@@ -23,6 +23,7 @@ PERMISSIONS = [
     "ledger.write",          # manual entries and reversals
     "time.write",            # clock in/out and log own time on tickets
     "time.manage",           # edit anyone's time and see everyone's timesheets
+    "data.import",           # CSV import of customers, inventory items and services (owner and manager)
 ]
 
 # (name, label, default permissions). Keep in step with migration 0005 for existing businesses.
@@ -32,7 +33,7 @@ ROLES = [
         "users.read", "customers.read", "customers.write", "equipment.read", "equipment.write",
         "tickets.read", "tickets.write", "tickets.assign", "tickets.read_all", "audit.read",
         "services.read", "services.write", "inventory.read", "inventory.write", "invoices.read", "invoices.write",
-        "ledger.read", "ledger.write", "time.write", "time.manage",
+        "ledger.read", "ledger.write", "time.write", "time.manage", "data.import",
     ]),
     ("technician", "Technician", [
         "customers.read", "equipment.read", "equipment.write", "tickets.read", "tickets.write",

@@ -59,6 +59,8 @@ Legend: [x] implemented AND tested (tests run and passing), [~] written, NOT yet
       reschedule/cancel, hourly in-app job that creates the follow-up ticket (idempotent, catches up). Dashboard "Money out" tile red.
 - [~] v0.0.13. Ticket page tidy-up (details + edit in one box, notes first, Assign-to popup), manual calendar items
       (migration 0011, `/api/calendar-items`), full-width dashboard grid.
+- [~] v0.1.0. Platform admin Shops console (platform migration 0002; tenant 0012 temporary passwords), CSV data import (tenant 0013, permission `data.import`),
+      full-width Tickets table with side panel, tickets status-filter fix, invoice-to-ticket link, customer history with invoices.
 - [ ] 10. Tenant-isolation tests for every new route (existing suite covers steps 1-4 routes)
 - [~] 11. Installer (`install/shopdesk.sh`): written, never run on Proxmox
 - [ ] 12. Restore test on a clean container

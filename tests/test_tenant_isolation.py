@@ -25,6 +25,7 @@ SELF_SCOPED = {            # no object ids in the URL: results come only from th
     ("GET", "/api/inventory"), ("POST", "/api/inventory"),
     ("GET", "/api/invoices"), ("POST", "/api/invoices"),
     ("GET", "/api/invoices/settings"), ("PUT", "/api/invoices/settings"),
+    ("POST", "/api/account/password"), ("GET", "/api/import/types"), ("GET", "/api/import/history"),
 }
 ID_ROUTES_TESTED = {       # routes taking an id; each has an explicit cross-tenant test (here, test_team.py, test_customers.py)
     ("GET", "/api/users/<id>"), ("PUT", "/api/users/<id>"), ("DELETE", "/api/invites/<id>"),
@@ -45,6 +46,9 @@ ID_ROUTES_TESTED = {       # routes taking an id; each has an explicit cross-ten
     ("PUT", "/api/time/<id>"), ("DELETE", "/api/time/<id>"),
     ("GET", "/api/invoices/<id>"), ("PUT", "/api/invoices/<id>"), ("DELETE", "/api/invoices/<id>"),
     ("POST", "/api/invoices/<id>/issue"), ("POST", "/api/invoices/<id>/pay"), ("POST", "/api/invoices/<id>/void"),
+    ("PUT", "/api/invoices/<id>/ticket"),                                       # test_invoice_ticket_link.py
+    ("GET", "/api/import/sample/<kind>"), ("POST", "/api/import/<kind>/preview"), ("POST", "/api/import/<kind>/start"),
+    ("POST", "/api/import/<kind>/batch"), ("POST", "/api/import/<kind>/finish"),    # test_import.py (isolation test)
 }
 
 

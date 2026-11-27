@@ -202,10 +202,11 @@ async function route() {
   else if (hash.startsWith("#/customers/") && can("customers.read")) { active = "#/customers"; view = () => customerDetail(decodeURIComponent(hash.slice(12))); }
   else if (hash.startsWith("#/customers") && can("customers.read")) { active = "#/customers"; view = customersView; }
   else if (hash === "#/activity" && can("audit.read")) { active = "#/activity"; view = activityView; }
+  else if (path === "#/import" && can("data.import")) { active = "#/settings"; view = importView; }
   else view = settingsView;
   drawNav(active);
   paintBrand(BRAND);                                  // drops any unsaved colour preview from the settings page
-  content.classList.toggle("wide", active === "#/board" || active === "#/dashboard");
+  content.classList.toggle("wide", active === "#/board" || active === "#/dashboard" || path === "#/tickets");
   content.replaceChildren(h("p", { class: "muted" }, "Loading…"));
   try {
     content.replaceChildren(...await view());
@@ -309,10 +310,27 @@ async function customerDetail(id) {
   if (can("equipment.read")) nodes.push(equipmentCard(customer, defsRes.fields, equipRes.equipment));
   if (can("tickets.read")) {
     const { tickets } = await api("GET", "/api/tickets?customer_id=" + encodeURIComponent(id) + "&limit=100");
+    // Invoices are only fetched (and shown) for people whose role may view invoices.
+    let byTicket = null, more = false;
+    if (can("invoices.read")) {
+      await biz();
+      const inv = await api("GET", "/api/invoices?customer_id=" + encodeURIComponent(id) + "&limit=200");
+      byTicket = {};
+      for (const i of inv.invoices) if (i.ticket_id) (byTicket[i.ticket_id] = byTicket[i.ticket_id] || []).push(i);
+      more = inv.total > inv.invoices.length;
+    }
     nodes.push(h("section", { class: "card" }, h("h2", null, "Repair history"),
-      tickets.length ? ticketTable(tickets) : h("p", { class: "muted" }, "No tickets yet.")));
+      tickets.length ? ticketTable(tickets, byTicket) : h("p", { class: "muted" }, "No tickets yet."),
+      more ? h("p", { class: "muted small" }, "Only the 200 most recent invoices are matched to tickets here.") : null));
   }
   return nodes;
+}
+
+// One line per invoice linked to a ticket: number, date, total, status and a link to open it.
+function invoiceLines(list) {
+  return h("ul", { class: "history ticket-invoices" }, list.map(i => h("li", null, "Invoice ",
+    h("a", { href: "#/invoices/" + encodeURIComponent(i.id) }, i.number || "Draft"),
+    " · " + (i.issue_date || (i.created_at || "").slice(0, 10)) + " · " + money(i.total_cents) + " · " + i.status)));
 }
 
 // ------------------------------------------------------------ equipment
@@ -466,49 +484,144 @@ async function activityView() {
 // ------------------------------------------------------------ tickets
 const today = () => new Date().toISOString().slice(0, 10);
 
-function ticketTable(tickets) {
-  return h("div", { class: "table-wrap" }, h("table", null,
-    h("thead", null, h("tr", null, ["#", "Title", "Customer", "Status", "Priority", "Due", "Assigned"].map(t => h("th", null, t)))),
-    h("tbody", null, tickets.map(t => h("tr", null,
+// invoicesByTicket (optional): { ticketId: [invoice, ...] } adds the linked invoices under each ticket (customer page).
+function ticketTable(tickets, invoicesByTicket) {
+  const rows = [];
+  for (const t of tickets) {
+    rows.push(h("tr", null,
       h("td", null, h("a", { href: "#/tickets/" + encodeURIComponent(t.id) }, t.number)),
       h("td", null, t.title), h("td", null, t.customer_name), h("td", null, t.status_name),
       h("td", { class: "prio-" + t.priority }, t.priority),
       h("td", { class: t.due_date && t.due_date < today() && !t.status_closed ? "overdue" : "" }, t.due_date || ""),
-      h("td", null, t.assignee_names || ""))))));
+      h("td", null, t.assignee_names || "")));
+    const inv = invoicesByTicket && invoicesByTicket[t.id];
+    if (inv && inv.length) rows.push(h("tr", { class: "sub-row" }, h("td", null), h("td", { colspan: "6" }, invoiceLines(inv))));
+  }
+  return h("div", { class: "table-wrap" }, h("table", null,
+    h("thead", null, h("tr", null, ["#", "Title", "Customer", "Status", "Priority", "Due", "Assigned"].map(t => h("th", null, t)))),
+    h("tbody", null, rows)));
 }
+
+// Filter state survives re-renders (the page redraws after any action in the side panel).
+const TK = { q: "", status: "open", priority: "", assignee: "", mine: false, overdue: false, sort: "", dir: "asc", shown: 0, scroll: 0 };
+const TK_PAGE = 100;
 
 async function ticketsView() {
   const statuses = (await api("GET", "/api/statuses")).statuses;
-  const list = h("div");
-  const errBox = h("div", { class: "error" });
-  const search = h("input", { type: "search", placeholder: "Search number, title, customer, serial", maxlength: 100 });
-  const statusSel = h("select", null, h("option", { value: "" }, "All statuses"), statuses.map(s => h("option", { value: s.id }, s.name)));
-  const openOnly = h("input", { type: "checkbox", checked: true });
-  const mine = h("input", { type: "checkbox" });
-  const overdue = h("input", { type: "checkbox" });
-  async function load() {
-    const p = new URLSearchParams({ q: search.value.trim(), status_id: statusSel.value, limit: "100" });
-    if (openOnly.checked) p.set("open", "1");
-    if (mine.checked) p.set("assignee", "me");
-    if (overdue.checked) p.set("overdue", "1");
-    const r = await api("GET", "/api/tickets?" + p.toString());
-    list.replaceChildren(r.tickets.length ? ticketTable(r.tickets) : h("p", { class: "muted" }, "No tickets match."));
-  }
-  const reload = () => load().catch(showError(errBox));
-  let timer;
-  search.addEventListener("input", () => { clearTimeout(timer); timer = setTimeout(reload, 250); });
-  for (const el of [statusSel, openOnly, mine, overdue]) el.addEventListener("change", reload);
-  await load();
-  const check = (label, input) => h("label", { class: "inline" }, input, " " + label);
-  const nodes = [h("section", { class: "card" }, h("h2", null, "Tickets"), search,
-    h("div", { class: "filters" }, statusSel, check("Open only", openOnly), check("Mine", mine), check("Overdue", overdue)),
-    errBox, list)];
-  if (can("tickets.write") && can("customers.read")) {
-    nodes[0].querySelector("h2").after(h("p", null, h("a", { class: "btn primary", href: "#/tickets/new" }, "+ New ticket")));
-  }
-  return nodes;
-}
+  const staff = can("tickets.assign") ? (await api("GET", "/api/staff")).staff : [];
+  const openId = new URLSearchParams(location.hash.split("?")[1] || "").get("t");
+  const errBox = h("div", { class: "error", role: "alert" });
+  const count = h("span", { class: "muted tk-count", "aria-live": "polite" });
+  const list = h("div", { class: "tk-scroll" });
+  const panel = h("aside", { class: "tk-panel", "aria-label": "Ticket details" });
+  const more = h("button", { type: "button" }, "Load more");
+  const search = h("input", { type: "search", placeholder: "Search number, title, customer, serial", maxlength: 100, value: TK.q, "aria-label": "Search tickets" });
+  const statusSel = h("select", { "aria-label": "Status" },
+    [["", "All statuses"], ["open", "Open statuses"], ["closed", "Closed / cancelled statuses"]].map(([v, l]) => h("option", { value: v, selected: TK.status === v }, l)),
+    statuses.map(s => h("option", { value: s.id, selected: TK.status === s.id }, s.name)));
+  const prioSel = h("select", { "aria-label": "Priority" }, h("option", { value: "" }, "Any priority"),
+    ["urgent", "high", "normal", "low"].map(p => h("option", { value: p, selected: TK.priority === p }, p)));
+  const whoSel = staff.length ? h("select", { "aria-label": "Assigned to" }, h("option", { value: "" }, "Anyone"),
+    staff.map(u => h("option", { value: u.id, selected: TK.assignee === u.id }, u.name))) : null;
+  const mine = h("input", { type: "checkbox", checked: TK.mine });
+  const overdue = h("input", { type: "checkbox", checked: TK.overdue });
+  let tickets = [], total = 0, selected = openId, token = 0;
 
+  async function load(append) {
+    const p = new URLSearchParams({ q: TK.q.trim(), status_id: TK.status,
+      limit: String(append ? TK_PAGE : Math.min(200, Math.max(TK_PAGE, TK.shown))), offset: String(append ? tickets.length : 0) });
+    if (TK.mine) p.set("assignee", "me"); else if (TK.assignee) p.set("assignee", TK.assignee);
+    if (TK.priority) p.set("priority", TK.priority);
+    if (TK.overdue) p.set("overdue", "1");
+    if (TK.sort) { p.set("sort", TK.sort); p.set("dir", TK.dir); }
+    const r = await api("GET", "/api/tickets?" + p.toString());
+    tickets = append ? tickets.concat(r.tickets) : r.tickets;
+    total = r.total; TK.shown = tickets.length;
+    draw();
+  }
+  const reload = () => load(false).catch(showError(errBox));
+
+  function sortHead(key, label) {
+    const on = TK.sort === key;
+    return h("th", { "aria-sort": on ? (TK.dir === "asc" ? "ascending" : "descending") : "none" },
+      h("button", { type: "button", class: "sort-btn", onclick: () => { if (on) TK.dir = TK.dir === "asc" ? "desc" : "asc"; else { TK.sort = key; TK.dir = "asc"; } reload(); } },
+        label + (on ? (TK.dir === "asc" ? " ▲" : " ▼") : "")));
+  }
+  function draw() {
+    count.textContent = total + (total === 1 ? " ticket" : " tickets") + (tickets.length < total ? " (showing " + tickets.length + ")" : "");
+    more.hidden = tickets.length >= total;
+    if (!tickets.length) {
+      list.replaceChildren(h("p", { class: "muted tk-empty" }, "No tickets match these filters." + (TK.status !== "" ? " Try “All statuses” to include closed and cancelled tickets." : "")));
+      return;
+    }
+    const rows = tickets.map(t => {
+      const link = h("a", { href: "#/tickets/" + encodeURIComponent(t.id), onclick: (e) => {
+        if (e.ctrlKey || e.metaKey || e.shiftKey || e.button) return;     // modified clicks keep the normal link behaviour
+        if (window.matchMedia("(max-width: 900px)").matches) return;      // small screens: the full ticket page, as before
+        e.preventDefault(); openPanel(t.id);
+      } }, t.number);
+      return h("tr", { class: "tk-row" + (t.id === selected ? " selected" : ""), "data-id": t.id,
+        onclick: (e) => { if (!e.target.closest("a")) link.click(); } },
+        h("td", null, link), h("td", { class: "tk-title" }, t.title), h("td", null, t.status_name),
+        h("td", { class: "prio-" + t.priority }, t.priority), h("td", null, t.customer_name), h("td", null, t.equipment_names || ""),
+        h("td", null, t.assignee_names || ""), h("td", null, (t.created_at || "").slice(0, 10)), h("td", null, (t.updated_at || "").slice(0, 10)),
+        h("td", { class: t.due_date && t.due_date < today() && !t.status_closed ? "overdue" : "" }, t.due_date || ""));
+    });
+    list.replaceChildren(h("table", { class: "tk-table" },
+      h("thead", null, h("tr", null, sortHead("number", "#"), h("th", null, "Title"), sortHead("status", "Status"), sortHead("priority", "Priority"),
+        sortHead("customer", "Customer"), sortHead("item", "Item / device"), sortHead("assigned", "Assigned to"),
+        sortHead("created", "Created"), sortHead("updated", "Updated"), sortHead("due", "Due"))),
+      h("tbody", null, rows)));
+  }
+
+  function closePanel() {
+    selected = null; token++;
+    history.replaceState(null, "", "#/tickets");
+    layout.classList.remove("has-panel"); panel.replaceChildren();
+    list.querySelectorAll("tr.selected").forEach(r => r.classList.remove("selected"));
+  }
+  async function openPanel(id) {
+    if (window.matchMedia("(max-width: 900px)").matches) { location.hash = "#/tickets/" + encodeURIComponent(id); return; }
+    const mine_ = ++token;
+    selected = id;
+    history.replaceState(null, "", "#/tickets?t=" + encodeURIComponent(id));
+    layout.classList.add("has-panel");
+    list.querySelectorAll("tr.tk-row").forEach(r => r.classList.toggle("selected", r.dataset.id === id));
+    const bar = h("div", { class: "tk-panel-bar" },
+      h("a", { href: "#/tickets/" + encodeURIComponent(id) }, "Open full page"),
+      h("button", { type: "button", onclick: closePanel, "aria-label": "Close ticket panel" }, "✕ Close"));
+    panel.replaceChildren(bar, h("p", { class: "muted" }, "Loading…"));
+    try {
+      const nodes = await ticketDetail(id, true);
+      if (mine_ === token) panel.replaceChildren(bar, ...nodes);
+    } catch (err) { if (mine_ === token) panel.replaceChildren(bar, h("p", { class: "error" }, err.message)); }
+  }
+
+  let timer;
+  search.addEventListener("input", () => { TK.q = search.value; clearTimeout(timer); timer = setTimeout(reload, 250); });
+  statusSel.addEventListener("change", () => { TK.status = statusSel.value; reload(); });
+  prioSel.addEventListener("change", () => { TK.priority = prioSel.value; reload(); });
+  if (whoSel) whoSel.addEventListener("change", () => { TK.assignee = whoSel.value; reload(); });
+  mine.addEventListener("change", () => { TK.mine = mine.checked; if (whoSel) whoSel.disabled = mine.checked; reload(); });
+  overdue.addEventListener("change", () => { TK.overdue = overdue.checked; reload(); });
+  more.addEventListener("click", () => load(true).catch(showError(errBox)));
+  list.addEventListener("scroll", () => { TK.scroll = list.scrollTop; });
+  if (whoSel) whoSel.disabled = TK.mine;
+
+  const check = (label, input) => h("label", { class: "inline" }, input, " " + label);
+  const newBtn = can("tickets.write") && can("customers.read") ? h("a", { class: "btn primary", href: "#/tickets/new" }, "+ New ticket") : null;
+  const layout = h("div", { class: "tk-layout" },
+    h("section", { class: "card tk-main" },
+      h("div", { class: "tk-head" }, h("h2", null, "Tickets"), count, newBtn),
+      h("div", { class: "filters tk-filters" }, search, statusSel, prioSel, whoSel, check("Mine", mine), check("Overdue", overdue)),
+      errBox, list, h("div", { class: "form-actions" }, more)),
+    panel);
+  layout.addEventListener("keydown", (e) => { if (e.key === "Escape" && selected) closePanel(); });
+  await load(false);
+  list.scrollTop = TK.scroll;
+  if (openId) setTimeout(() => openPanel(openId), 0);
+  return [layout];
+}
 async function newTicketView() {
   const pre = new URLSearchParams(location.hash.split("?")[1] || "").get("customer");
   let customer = null;
@@ -618,11 +731,11 @@ async function assignDialog(t, onDone) {
   dlg.addEventListener("close", onDone);
 }
 
-async function ticketDetail(id) {
+async function ticketDetail(id, inPanel) {
   const eid = encodeURIComponent(id);
   const [t, st] = await Promise.all([api("GET", "/api/tickets/" + eid), api("GET", "/api/statuses")]);
   const msg = h("div", { class: "error", role: "alert" });
-  const nodes = [h("p", null, h("a", { href: "#/tickets" }, "← All tickets"))];
+  const nodes = inPanel ? [] : [h("p", null, h("a", { href: "#/tickets" }, "← All tickets"))];
   const run = (fn) => async () => { msg.textContent = ""; try { await fn(); route(); } catch (err) { msg.textContent = err.message; } };
 
   // header + status
@@ -728,6 +841,9 @@ async function settingsView() {
     editable ? h("div", { class: "form-actions" }, h("button", { class: "primary", type: "submit" }, "Save"), msg) : null);
   nodes.push(h("section", { class: "card" }, h("h2", null, "Business profile"), profile));
   if (can("business.manage")) { nodes.push(brandingCard()); nodes.push(await statusesCard()); nodes.push(await numberingCard()); nodes.push(await invoiceSettingsCard()); }
+  if (can("data.import")) nodes.push(h("section", { class: "card" }, h("h2", null, "Import data"),
+    h("p", { class: "muted" }, "Bring in customers, inventory items and services from CSV files (for example exported from QuickBooks)."),
+    h("a", { class: "btn", href: "#/import" }, "Open the importer")));
   if (can("users.read")) nodes.push(await teamCard(ME));
   return nodes;
 }
@@ -850,12 +966,32 @@ async function teamCard(me) {
   return card;
 }
 
+// Shown after signing in with an administrator-issued temporary password: nothing else works until it is replaced.
+function passwordScreen() {
+  const err = h("div", { class: "error", role: "alert" });
+  const cur = h("input", { type: "password", required: true, autocomplete: "current-password", maxlength: 200 });
+  const p1 = h("input", { type: "password", required: true, minlength: 10, autocomplete: "new-password", maxlength: 200 });
+  const p2 = h("input", { type: "password", required: true, minlength: 10, autocomplete: "new-password", maxlength: 200 });
+  render(h("div", { class: "auth" }, h("h1", null, "Choose a new password"),
+    h("div", { class: "card" }, h("p", { class: "muted" }, "You signed in with a temporary password. Choose your own (10+ characters) to continue."),
+      h("form", { onsubmit: async (e) => {
+          e.preventDefault(); err.textContent = "";
+          if (p1.value !== p2.value) { err.textContent = "The two passwords do not match."; return; }
+          try { await api("POST", "/api/account/password", { current_password: cur.value, new_password: p1.value }); await start(); }
+          catch (ex) { err.textContent = ex.message; }
+        } },
+        field("Temporary password", cur), field("New password", p1), field("Repeat new password", p2),
+        h("div", { class: "form-actions" }, h("button", { class: "primary", type: "submit" }, "Save new password"),
+          h("button", { type: "button", onclick: async () => { try { await api("POST", "/api/logout", {}); } finally { csrf = ""; start(); } } }, "Sign out")), err))));
+}
+
 // ------------------------------------------------------------ boot
 async function start() {
   if (location.hash.startsWith("#/invite/")) return inviteScreen(location.hash.slice("#/invite/".length));
   try {
     const me = await api("GET", "/api/me");
     csrf = me.csrf;
+    if (me.user.must_change_password) return passwordScreen();
     await dashboard(me);
   } catch (err) {
     csrf = ""; ME = null; window.onhashchange = null; setBrand(null); document.title = "ShopDesk";

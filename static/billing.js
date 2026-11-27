@@ -1,4 +1,4 @@
-﻿"use strict";
+"use strict";
 // Services, inventory and invoices. Amounts are cents on the wire and in state; text boxes hold dollars.
 
 function parsePct(text) {                        // "7.5" -> 750 (basis points), or null
@@ -490,6 +490,7 @@ function invoiceReadOnly(inv, b, s) {
     } }, "Void"));
   }
   if (inv.status === "void") nodes[1].append(h("p", { class: "muted" }, "Voided: " + inv.void_reason));
+  nodes.push(ticketLinkCard(inv));
   nodes.push(h("div", { class: "sheet-wrap" }, invoiceSheet(inv, b, s)));
   return nodes;
 }
@@ -629,6 +630,7 @@ async function invoiceEditor(inv, b, s) {
       h("p", null, h("strong", null, inv.customer_name), inv.ticket_number ? "  ·  Ticket #" + inv.ticket_number : ""),
       h("div", { class: "grid2" }, field("Due date (blank = " + s.terms_days + " days after issue)", dueIn), field("Tax rate (%)", taxIn)),
       field("Notes shown on the invoice", notesIn)),
+    ticketLinkCard(inv),
     h("section", { class: "card" }, h("h2", null, "Line items"), linesBox,
       h("h3", null, "Add to invoice"),
       services.length ? h("div", { class: "add-row" }, svcSel, addSvc) : null,
@@ -660,4 +662,43 @@ async function invoiceSettingsCard() {
       field("Invoice number prefix", prefix), field("Next invoice number", next), field("Default sales tax rate (%)", tax),
       field("Payment terms (days until due)", terms), field("Footer text on printed invoices", footer),
       h("div", { class: "form-actions" }, h("button", { class: "primary", type: "submit" }, "Save"), msg)));
+}
+
+// ------------------------------------------------------------ link an invoice to an open ticket
+// Shows the linked ticket and (for people who can edit invoices, on non-void invoices) lets them attach, change or remove it.
+// The picker lists only OPEN tickets of the invoice's own customer.
+function ticketLinkCard(inv) {
+  const msg = h("div", { class: "error", role: "alert" });
+  const box = h("div");
+  const editable = can("invoices.write") && inv.status !== "void";
+  const setLink = async (ticketId) => {
+    msg.textContent = "";
+    try { await api("PUT", "/api/invoices/" + enc(inv.id) + "/ticket", { ticket_id: ticketId }); route(); }
+    catch (e) { msg.textContent = e.message; }
+  };
+  function showPicker() {
+    const q = h("input", { type: "search", placeholder: "Search ticket number, title or customer", maxlength: 100, "aria-label": "Search open tickets" });
+    const results = h("div", { class: "picker-results" });
+    let timer;
+    async function find() {
+      try {
+        const r = await api("GET", "/api/tickets?customer_id=" + enc(inv.customer_id) + "&status_id=open&limit=10&q=" + enc(q.value.trim()));
+        results.replaceChildren(...(r.tickets.length ? r.tickets.map(t => h("button", { type: "button", class: "picker-item", onclick: () => setLink(t.id) },
+          h("strong", null, "#" + t.number + " · " + t.title), " · " + t.customer_name + " · " + t.status_name))
+          : [h("p", { class: "muted" }, "No open tickets for " + inv.customer_name + " match.")]));
+      } catch (e) { msg.textContent = e.message; }
+    }
+    q.addEventListener("input", () => { clearTimeout(timer); timer = setTimeout(find, 200); });
+    box.replaceChildren(h("p", { class: "muted small" }, "Only open tickets for " + inv.customer_name + " are listed."), q, results,
+      h("div", { class: "form-actions" }, h("button", { type: "button", onclick: draw }, "Cancel")));
+    find();
+  }
+  function draw() {
+    const linked = inv.ticket_id ? h("p", null, "Linked to ", h("a", { href: "#/tickets/" + enc(inv.ticket_id) }, "ticket #" + inv.ticket_number)) : h("p", { class: "muted" }, "Not linked to a ticket.");
+    box.replaceChildren(linked, editable ? h("div", { class: "form-actions" },
+      h("button", { type: "button", onclick: showPicker }, inv.ticket_id ? "Change ticket" : "Attach to ticket"),
+      inv.ticket_id ? h("button", { type: "button", onclick: () => { if (confirm("Remove the link to ticket #" + inv.ticket_number + "? The invoice itself does not change.")) setLink(null); } }, "Remove link") : null) : null);
+  }
+  draw();
+  return h("section", { class: "card" }, h("h2", null, "Ticket"), box, msg);
 }

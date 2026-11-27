@@ -48,6 +48,10 @@ class Config:
         return self.data_dir / "tenants"
 
     @property
+    def trash_dir(self):                # deleted shops wait here for 30 days (inside the existing data directory)
+        return self.data_dir / "trash"
+
+    @property
     def update_request_path(self):      # the app drops a file here; a root systemd .path unit starts the updater
         return self.data_dir / "update-request"
 

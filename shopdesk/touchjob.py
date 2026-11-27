@@ -15,6 +15,7 @@ from .audit import audit
 from .db import connect, tx
 from .modules.tickets import _allocate_number, _history
 from .tenants import open_tenant_db
+from .trash import purge_expired
 from .util import new_id, now_iso
 
 INTERVAL_SECONDS = 3600
@@ -139,6 +140,7 @@ def start(config, interval=INTERVAL_SECONDS):
     def loop():
         while True:
             run_once(config)
+            purge_expired(config)                             # deleted shops older than 30 days leave the trash folder
             if stop.wait(interval):
                 return
 

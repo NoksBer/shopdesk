@@ -10,6 +10,7 @@ from ..audit import audit
 from ..db import tx
 from ..util import (MAX_CENTS, ApiError, clean_date, clean_flag, clean_int, clean_text, like_pattern, new_id,
                     now_iso)
+from .tickets import _RESTRICT, _restrict_params
 
 KINDS = ("manual", "service", "inventory")
 PREFIX_RE = re.compile(r"^[A-Za-z0-9-]{0,10}$")
@@ -48,6 +49,10 @@ WHERE i.id = ?
 """
 
 
+TICKET_SQL = ("SELECT t.id, t.number, t.customer_id, s.is_closed FROM tickets t "
+              "JOIN ticket_statuses s ON s.id = t.status_id WHERE t.id = :id AND " + _RESTRICT)
+
+
 def register(router):
     # "settings" must be registered before "<id>"
     router.add("GET", "/api/invoices/settings", get_settings, "invoices.read")
@@ -60,6 +65,7 @@ def register(router):
     router.add("POST", "/api/invoices/<id>/issue", issue_invoice, "invoices.write")
     router.add("POST", "/api/invoices/<id>/pay", pay_invoice, "invoices.write")
     router.add("POST", "/api/invoices/<id>/void", void_invoice, "invoices.write")
+    router.add("PUT", "/api/invoices/<id>/ticket", set_ticket, "invoices.write")
 
 
 # ---------------------------------------------------------------- money
@@ -368,6 +374,44 @@ def pay_invoice(ctx):
                             "Invoice %s paid%s" % (old["number"], " (%s)" % method if method else ""),
                             "invoice", old["id"], old["number"], ts=ts)
         audit(db, ctx.user.id, "invoice.paid", "invoice", old["id"], ip=ctx.req.ip)
+    return _load(db, old["id"])
+
+
+def set_ticket(ctx):
+    """Attach an invoice to an open ticket of the same customer, change that link, or remove it (ticket_id null).
+    Only the link changes: amounts, stock and ledger entries are never touched. Void invoices cannot be changed."""
+    body = ctx.req.json()
+    db = ctx.db
+    old = _load(db, ctx.params["id"])
+    if "ticket_id" not in body:
+        raise ApiError(400, "ticket_id is required (use null to remove the link)")
+    target = body["ticket_id"] or None
+    if target is not None and not isinstance(target, str):
+        raise ApiError(400, "ticket_id must be text")
+    ticket = None
+    if target is not None:
+        params = {"id": target}
+        params.update(_restrict_params(ctx))
+        ticket = db.execute(TICKET_SQL, params).fetchone()
+        if ticket is None:
+            raise ApiError(404, "Ticket not found")
+        if ticket["customer_id"] != old["customer_id"]:
+            raise ApiError(400, "The ticket must belong to the same customer as the invoice")
+        if ticket["is_closed"]:
+            raise ApiError(400, "Only open tickets can be linked (not Completed / Closed or Cancelled)")
+    with tx(db):
+        status = _status_of(db, old["id"])
+        if status == "void":
+            raise ApiError(409, "A void invoice cannot be linked to a ticket")
+        new_id_ = ticket["id"] if ticket else None
+        if new_id_ == old["ticket_id"]:
+            return _load(db, old["id"])                       # nothing to change
+        db.execute("UPDATE invoices SET ticket_id=?, updated_at=? WHERE id=?", (new_id_, now_iso(), old["id"]))
+        action = "invoice.ticket_removed" if ticket is None else (
+            "invoice.ticket_attached" if old["ticket_id"] is None else "invoice.ticket_changed")
+        audit(db, ctx.user.id, action, "invoice", old["id"],
+              {"invoice": old["number"] or "draft", "from_ticket": old["ticket_number"] or "",
+               "to_ticket": ticket["number"] if ticket else ""}, ctx.req.ip)
     return _load(db, old["id"])
 
 

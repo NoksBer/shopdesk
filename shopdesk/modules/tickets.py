@@ -34,16 +34,33 @@ WHERE """ + _RESTRICT + """
                   WHERE te.ticket_id = t.id AND (e.name LIKE :pat ESCAPE '\\' OR e.serial_number LIKE :pat ESCAPE '\\')))
 """
 
-LIST_SQL = ("""
+_LIST_HEAD = ("""
 SELECT t.id, t.number, t.title, t.priority, t.due_date, t.customer_id, c.name AS customer_name,
        t.status_id, s.name AS status_name, s.is_closed AS status_closed, t.created_at, t.updated_at, t.closed_at,
        (SELECT group_concat(u.name, ', ') FROM ticket_assignees a JOIN users u ON u.id = a.user_id
-        WHERE a.ticket_id = t.id) AS assignee_names
-""" + _FROM + _FILTER + """
-ORDER BY CASE t.priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END,
-         COALESCE(t.due_date, '9999-12-31'), t.created_at DESC, t.id
-LIMIT :limit OFFSET :offset
-""")
+        WHERE a.ticket_id = t.id) AS assignee_names,
+       (SELECT group_concat(e.name, ', ') FROM ticket_equipment te JOIN equipment e ON e.id = te.equipment_id
+        WHERE te.ticket_id = t.id) AS equipment_names
+""" + _FROM + _FILTER)
+
+_PRIORITY_ORDER = "CASE t.priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END"
+_DEFAULT_ORDER = "ORDER BY " + _PRIORITY_ORDER + ", COALESCE(t.due_date, '9999-12-31'), t.created_at DESC, t.id"
+_LIST_TAIL = "\nLIMIT :limit OFFSET :offset\n"
+LIST_SQL = _LIST_HEAD + _DEFAULT_ORDER + _LIST_TAIL
+
+# Sortable columns of the Tickets table. The ORDER BY text comes only from this fixed table (never from the request);
+# "{d}" is replaced with ASC or DESC. Ties always end with t.id so paging is stable.
+SORTS = {
+    "number": "LENGTH(t.number) {d}, t.number {d}",
+    "status": "s.sort_order {d}, s.name {d}",
+    "priority": _PRIORITY_ORDER + " {d}",
+    "customer": "c.name COLLATE NOCASE {d}",
+    "item": "equipment_names IS NULL, equipment_names COLLATE NOCASE {d}",
+    "assigned": "assignee_names IS NULL, assignee_names COLLATE NOCASE {d}",
+    "created": "t.created_at {d}",
+    "updated": "t.updated_at {d}",
+    "due": "t.due_date IS NULL, t.due_date {d}",
+}
 
 COUNT_SQL = "SELECT COUNT(*) " + _FROM + _FILTER
 
@@ -289,16 +306,27 @@ def list_tickets(ctx):
     assignee = one("assignee")[:64]
     if assignee == "me":
         assignee = ctx.user.id
+    # status_id: "" = every status (closed and cancelled included), "open" / "closed" = every open / closed status,
+    # anything else = that one status. A specific status is never combined with the separate "open" flag.
+    status_id = one("status_id")[:64]
+    if status_id in ("open", "closed"):
+        open_filter = 1 if status_id == "open" else 0
+        status_id = ""
+    elif status_id:
+        open_filter = -1
     params = {
-        "status_id": one("status_id")[:64], "priority": one("priority")[:10], "cust": one("customer_id")[:64],
+        "status_id": status_id, "priority": one("priority")[:10], "cust": one("customer_id")[:64],
         "open": open_filter, "overdue": 1 if one("overdue") == "1" else 0, "today": date.today().isoformat(),
         "assignee": assignee, "q": q, "pat": like_pattern(q),
     }
     params.update(_restrict_params(ctx))
     page = dict(params, limit=req.query_int("limit", 50, 1, 200), offset=req.query_int("offset", 0, 0, 1000000))
-    rows = ctx.db.execute(LIST_SQL, page).fetchall()
+    sort = SORTS.get(one("sort"))
+    order = ("ORDER BY " + sort.replace("{d}", "DESC" if one("dir") == "desc" else "ASC") + ", t.id") if sort else _DEFAULT_ORDER
+    sql = _LIST_HEAD + order + _LIST_TAIL
+    rows = ctx.db.execute(sql, page).fetchall()
     total = ctx.db.execute(COUNT_SQL, params).fetchone()[0]
-    return {"tickets": [dict(r) for r in rows], "total": total}
+    return {"tickets": [dict(r) for r in rows], "total": total, "offset": page["offset"]}
 
 
 def create_ticket(ctx):

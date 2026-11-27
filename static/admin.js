@@ -143,14 +143,124 @@ function updatesCard() {
   return card;
 }
 
+// ------------------------------------------------------------ shops (metadata only: no customers, tickets, invoices or notes)
+const bytesText = (n) => n === null || n === undefined ? "" : n < 1024 * 1024 ? Math.max(1, Math.round(n / 1024)) + " KB" : (n / 1048576).toFixed(1) + " MB";
+const dayText = (iso) => iso ? iso.slice(0, 10) : "";
+const refreshers = [];
+const refreshAll = () => refreshers.forEach(fn => fn());
+
+function shopsCard() {
+  const notice = h("div");
+  const err = h("div", { class: "error", role: "alert" });
+  const body = h("div", null, h("p", { class: "muted" }, "Loading…"));
+  const search = h("input", { type: "search", placeholder: "Search shop, owner or email", maxlength: 100, "aria-label": "Search shops" });
+  let shops = [], sortKey = "created_at", dir = 1;
+  const card = h("section", { class: "card" }, h("h2", null, "Shops"),
+    h("p", { class: "muted" }, "Shop details only. This console never shows a shop's customers, tickets, invoices or notes."), search, notice, err, body);
+
+  async function act(fn) { err.textContent = ""; try { await fn(); } catch (e) { err.textContent = e.message; } }
+  async function setStatus(s, status) {
+    if (!confirm((status === "suspended" ? "Suspend " : "Restore ") + s.name + "? " + (status === "suspended" ? "Nobody in that shop can sign in until it is restored." : ""))) return;
+    await act(async () => { await api("POST", "/api/platform/tenants/" + s.id + "/status", { status }); load(); refreshAll(); });
+  }
+  async function resetPassword(s) {
+    await act(async () => {
+      const { owners } = await api("GET", "/api/platform/shops/" + s.id + "/owners");
+      if (!owners.length) throw new Error("This shop has no active owner account.");
+      let owner = owners[0];
+      if (owners.length > 1) {
+        const pick = prompt("Which owner? Type the number:\n" + owners.map((o, i) => (i + 1) + ". " + o.name + " <" + o.email + ">").join("\n"));
+        owner = owners[parseInt(pick, 10) - 1];
+        if (!owner) return;
+      }
+      if (!confirm("Create a one-time temporary password for " + owner.name + " (" + owner.email + ")? Their current password stops working and they are signed out.")) return;
+      const r = await api("POST", "/api/platform/shops/" + s.id + "/reset-owner-password", { user_id: owner.id });
+      notice.replaceChildren(h("div", { class: "card notice" }, h("h3", null, "Temporary password for " + r.owner.email),
+        h("p", null, h("code", { class: "temp-password" }, r.temporary_password)),
+        h("p", { class: "muted" }, "Shown once: copy it now and give it to the owner. It works for one sign-in within " + r.expires_hours + " hours; they must then choose their own password."),
+        h("button", { type: "button", onclick: () => notice.replaceChildren() }, "I have copied it")));
+      refreshAll();
+    });
+  }
+  async function remove(s) {
+    const typed = prompt("This suspends " + s.name + " and moves its database to the trash for 30 days (it can be restored until then).\n\nType the shop's exact name to confirm:");
+    if (typed === null) return;
+    await act(async () => { await api("POST", "/api/platform/shops/" + s.id + "/delete", { confirm_name: typed }); load(); refreshAll(); });
+  }
+
+  function draw() {
+    const q = search.value.trim().toLowerCase();
+    const list = shops.filter(s => !q || [s.name, s.owner_name, s.owner_email].join(" ").toLowerCase().includes(q));
+    list.sort((a, b) => { const x = a[sortKey], y = b[sortKey]; if (x === y) return 0; if (x === null || x === undefined || x === "") return 1; if (y === null || y === undefined || y === "") return -1; return (x < y ? -1 : 1) * dir; });
+    const heads = [["name", "Shop"], ["owner_name", "Owner"], ["created_at", "Created"], ["last_activity", "Last activity"], ["user_count", "Users"],
+      ["ticket_count", "Tickets"], ["db_bytes", "Database"], ["status", "Status"]];
+    body.replaceChildren(h("p", { class: "muted" }, list.length + " of " + shops.length + " shops"),
+      h("div", { class: "table-wrap" }, h("table", null,
+        h("thead", null, h("tr", null, heads.map(([k, l]) => h("th", { "aria-sort": sortKey === k ? (dir > 0 ? "ascending" : "descending") : "none" },
+          h("button", { type: "button", class: "sort-btn", onclick: () => { if (sortKey === k) dir = -dir; else { sortKey = k; dir = 1; } draw(); } }, l + (sortKey === k ? (dir > 0 ? " ▲" : " ▼") : "")))),
+          h("th", null, "Actions"))),
+        h("tbody", null, list.map(s => h("tr", null,
+          h("td", null, s.name), h("td", null, s.owner_name, h("div", { class: "muted small" }, s.owner_email)),
+          h("td", null, dayText(s.created_at)), h("td", null, s.db_missing ? "database missing" : when(s.last_activity)),
+          h("td", null, s.user_count === null ? "" : String(s.user_count)), h("td", null, s.ticket_count === null ? "" : String(s.ticket_count)),
+          h("td", null, bytesText(s.db_bytes)), h("td", null, s.status),
+          h("td", null, s.status === "pending deletion" ? h("span", { class: "muted" }, "Restore from “Recently deleted”") : h("div", { class: "form-actions wrap" },
+            s.status === "active" ? h("button", { type: "button", onclick: () => setStatus(s, "suspended") }, "Suspend") : h("button", { type: "button", onclick: () => setStatus(s, "active") }, "Restore"),
+            h("button", { type: "button", onclick: () => resetPassword(s) }, "Reset owner password"),
+            h("button", { type: "button", onclick: () => remove(s) }, "Delete…")))))))));
+  }
+  async function load() { await act(async () => { shops = (await api("GET", "/api/platform/shops")).shops; draw(); }); }
+  search.addEventListener("input", draw);
+  refreshers.push(load);
+  load();
+  return card;
+}
+
+function trashCard() {
+  const body = h("div");
+  const err = h("div", { class: "error", role: "alert" });
+  async function load() {
+    try {
+      const r = await api("GET", "/api/platform/trash");
+      body.replaceChildren(r.deleted.length ? h("div", { class: "table-wrap" }, h("table", null,
+        h("thead", null, h("tr", null, ["Shop", "Owner", "Deleted", "Purged automatically", ""].map(t => h("th", null, t)))),
+        h("tbody", null, r.deleted.map(d => h("tr", null, h("td", null, d.name), h("td", null, d.owner_email), h("td", null, when(d.deleted_at)), h("td", null, dayText(d.purge_after)),
+          h("td", null, h("button", { type: "button", onclick: async () => {
+            err.textContent = "";
+            try { await api("POST", "/api/platform/trash/" + d.id + "/restore", {}); refreshAll(); } catch (e) { err.textContent = e.message; }
+          } }, "Restore"))))))) : h("p", { class: "muted" }, "Nothing has been deleted recently."));
+    } catch (e) { err.textContent = e.message; }
+  }
+  refreshers.push(load);
+  load();
+  return h("section", { class: "card" }, h("h2", null, "Recently deleted"),
+    h("p", { class: "muted" }, "Deleted shops stay here for 30 days and are then removed for good. Restoring brings the shop back suspended; use Restore on the Shops list to let its staff sign in again."), body, err);
+}
+
+function auditCard() {
+  const body = h("div");
+  async function load() {
+    try {
+      const { events } = await api("GET", "/api/platform/audit?limit=100");
+      body.replaceChildren(h("div", { class: "table-wrap" }, h("table", null,
+        h("thead", null, h("tr", null, ["When", "Who", "Action", "Shop", "Details"].map(t => h("th", null, t)))),
+        h("tbody", null, events.map(e => h("tr", null, h("td", null, when(e.ts)), h("td", null, e.actor_email || "system"), h("td", null, e.action),
+          h("td", null, e.shop_name || ""), h("td", null, Object.keys(e.detail).length ? JSON.stringify(e.detail) : "")))))));
+    } catch (e) { body.replaceChildren(h("p", { class: "error" }, e.message)); }
+  }
+  refreshers.push(load);
+  load();
+  return h("section", { class: "card" }, h("h2", null, "Admin audit log"), h("p", { class: "muted" }, "Every administrator action: who, what, which shop, when (latest 100)."), body);
+}
 // ------------------------------------------------------------ page
 async function start() {
   try {
     const me = await api("GET", "/api/platform/me");
     CSRF = me.csrf;
+    refreshers.length = 0;
     render(h("div", { class: "form-actions" }, h("h1", null, "Server administration"), " ",
       h("button", { type: "button", onclick: async () => { try { await api("POST", "/api/platform/logout", {}); } catch (e) { /* ignore */ } loginView(); } }, "Sign out")),
-      h("p", { class: "muted" }, "Signed in as " + me.admin.email), updatesCard());
+      h("p", { class: "muted" }, "Signed in as " + me.admin.email), updatesCard(), shopsCard(), trashCard(), auditCard());
   } catch (e) { loginView(); }
 }
 

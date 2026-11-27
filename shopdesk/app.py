@@ -18,6 +18,9 @@ from .util import ApiError
 ASSET_RE = re.compile(rb'((?:src|href)=")(/[^"?#]+\.(?:js|css|svg))(")')
 ASSET_VERSION = quote(__version__, safe="").encode("ascii")
 
+# A user signed in with an administrator-issued temporary password may only change it (or sign out).
+ALLOWED_WHILE_TEMP_PASSWORD = {("GET", "/api/me"), ("POST", "/api/logout"), ("POST", "/api/account/password")}
+
 COOKIE_TENANT = "sd_session"
 COOKIE_PLATFORM = "sd_platform"
 
@@ -91,7 +94,7 @@ class App:
         self.router = Router()
         from .modules import (accounts, branding, business, customers, dashboard, equipment, inventory, invoices,
                               platform_admin, services, team, tickets)
-        from .modules import calitems, ledger, ticketnotes, timetracking, touchbases, updates
+        from .modules import calitems, importer, ledger, ticketnotes, timetracking, touchbases, updates
         from .updater import UpdateChecker
         self.update_checker = UpdateChecker(config)
         updates.register(self.router)
@@ -101,6 +104,7 @@ class App:
         ticketnotes.register(self.router)
         touchbases.register(self.router)
         calitems.register(self.router)
+        importer.register(self.router)
         accounts.register(self.router)
         dashboard.register(self.router)
         business.register(self.router)
@@ -125,7 +129,10 @@ class App:
         cleanup_stale_provisioning(cfg)
         plat = connect(cfg.platform_db_path)
         try:
-            ids = [r["id"] for r in plat.execute("SELECT id FROM tenants").fetchall()]
+            # shops waiting in the trash have no database in place right now; they are migrated when restored
+            ids = [r["id"] for r in plat.execute(
+                "SELECT id FROM tenants WHERE id NOT IN (SELECT tenant_id FROM tenant_trash "
+                "WHERE restored_at IS NULL AND purged_at IS NULL)").fetchall()]
         finally:
             plat.close()
         for tid in ids:
@@ -223,7 +230,8 @@ class App:
         if sess is None:
             raise ApiError(401, "Not signed in")
         row = ctx.db.execute(
-            "SELECT u.id, u.email, u.name, u.active, r.id AS role_id, r.name AS role_name, r.label AS role_label "
+            "SELECT u.id, u.email, u.name, u.active, u.must_change_password, "
+            "r.id AS role_id, r.name AS role_name, r.label AS role_label "
             "FROM users u JOIN roles r ON r.id = u.role_id WHERE u.id=?", (sess["subject_id"],)).fetchone()
         if row is None or not row["active"]:
             raise ApiError(401, "Not signed in")
@@ -231,7 +239,10 @@ class App:
         perms = {r["permission"] for r in ctx.db.execute(
             "SELECT permission FROM role_permissions WHERE role_id=?", (row["role_id"],))}
         ctx.user = User(row, perms)
+        ctx.user.must_change_password = bool(row["must_change_password"])
         ctx.session = sess
+        if ctx.user.must_change_password and (req.method, route.path) not in ALLOWED_WHILE_TEMP_PASSWORD:
+            raise ApiError(403, "You must set a new password before continuing")
         if access != "authed" and not ctx.user.can(access):
             raise ApiError(403, "You do not have permission to do that")
 
